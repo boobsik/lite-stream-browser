@@ -1,38 +1,72 @@
 mod browser;
 mod commands;
+mod metrics;
 mod state;
 
 use state::{AppState, SharedState};
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, WindowEvent};
+use tauri::{AppHandle, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn compact_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::CONTROL), Code::KeyH)
 }
 
+/// Ctrl+Tab switches to the next tab. The previous tab is always hibernated by
+/// `activate_tab`, so the one-WebView memory guarantee is preserved.
+fn next_tab_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::CONTROL), Code::Tab)
+}
+
+/// Registered only while the app window is focused, so the shortcuts are not
+/// stolen from other applications and still work when the child WebView has
+/// keyboard focus.
+fn register_shortcuts(app: &AppHandle) {
+    for shortcut in [compact_shortcut(), next_tab_shortcut()] {
+        if let Err(error) = app.global_shortcut().register(shortcut) {
+            eprintln!("[lite-stream] could not register {shortcut:?}: {error}");
+        }
+    }
+}
+
+fn unregister_shortcuts(app: &AppHandle) {
+    for shortcut in [compact_shortcut(), next_tab_shortcut()] {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let handler_shortcut = compact_shortcut();
+    let handler_compact = compact_shortcut();
+    let handler_next_tab = next_tab_shortcut();
 
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if event.state != ShortcutState::Pressed || shortcut != &handler_shortcut {
+                    if event.state != ShortcutState::Pressed {
                         return;
                     }
 
-                    // Ctrl+H must work while focus is inside the YouTube/Twitch
-                    // child WebView. The shortcut is only registered while our
-                    // window is focused, so we do not steal it from other apps.
+                    // Shortcuts must work while focus is inside the
+                    // YouTube/Twitch child WebView. They are only registered
+                    // while our window is focused, so we do not steal them
+                    // from other apps.
                     let focused = app
                         .get_window("main")
                         .and_then(|window| window.is_focused().ok())
                         .unwrap_or(false);
-                    if focused {
+                    if !focused {
+                        return;
+                    }
+
+                    if shortcut == &handler_compact {
                         if let Err(error) = commands::toggle_compact_sync(app) {
                             eprintln!("[lite-stream] compact mode toggle failed: {error}");
+                        }
+                    } else if shortcut == &handler_next_tab {
+                        if let Err(error) = commands::cycle_tab_sync(app, 1) {
+                            eprintln!("[lite-stream] tab switch failed: {error}");
                         }
                     }
                 })
@@ -59,10 +93,8 @@ pub fn run() {
             )));
             app.manage(shared);
 
-            // Register the shortcut now; focus events keep it in sync later.
-            if let Err(error) = app.global_shortcut().register(compact_shortcut()) {
-                eprintln!("[lite-stream] could not register Ctrl+H: {error}");
-            }
+            // Register the shortcuts now; focus events keep them in sync later.
+            register_shortcuts(app.handle());
 
             if let Some(window) = app.get_window("main") {
                 let handle = app.handle().clone();
@@ -71,11 +103,12 @@ pub fn run() {
                         browser::apply_layout(&handle);
                     }
                     WindowEvent::Focused(focused) => {
-                        // Only own Ctrl+H while the browser window is focused.
+                        // Only own Ctrl+H / Ctrl+Tab while the browser window
+                        // is focused.
                         if *focused {
-                            let _ = handle.global_shortcut().register(compact_shortcut());
+                            register_shortcuts(&handle);
                         } else {
-                            let _ = handle.global_shortcut().unregister(compact_shortcut());
+                            unregister_shortcuts(&handle);
                         }
                     }
                     _ => {}
@@ -94,11 +127,14 @@ pub fn run() {
             commands::reload,
             commands::hibernate,
             commands::wake,
+            commands::cycle_tab,
             commands::import_twitch_token,
             commands::toggle_compact,
             commands::toggle_always_on_top,
+            commands::set_webview_visible,
             commands::open_extensions_folder,
             commands::list_extensions,
+            commands::get_runtime_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lite Stream Browser");

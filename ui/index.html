@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
@@ -6,20 +6,24 @@
   <title>Lite Stream Browser</title>
   <style>
     :root {
-      --bg: #0d0d11;
-      --panel: #121212;
-      --panel-2: #1a1a1e;
-      --panel-3: #232329;
-      --line: #2a2a30;
-      --line-soft: rgba(255, 255, 255, 0.07);
-      --text: #f2f2f4;
-      --muted: #9696a1;
-      --muted-2: #6f6f7a;
-      --yt: #ff0033;
-      --tw: #9146ff;
-      --accent: #5c8dff;
+      --bg: #0B0C0E;
+      --surface: #111215;
+      --raised: #181A1F;
+      --raised-2: #1F2228;
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --text: #EDEEF1;
+      --text-2: #A7ABB3;
+      --text-3: #6E737C;
+      --yt: #FF0033;
+      --tw: #9146FF;
+      --ok: #5ED68A;
+      --warn: #E0B25C;
+      --danger: #FF6B6B;
       --bar: 36px;
-      --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      --ease: cubic-bezier(0.2, 0, 0, 1);
+      --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
     }
 
     * { box-sizing: border-box; }
@@ -34,7 +38,7 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      font-family: var(--sans);
       font-size: 13px;
       -webkit-font-smoothing: antialiased;
       user-select: none;
@@ -42,11 +46,34 @@
 
     button, input { font: inherit; color: inherit; }
     button { cursor: pointer; }
+    ::selection { background: rgba(255, 255, 255, 0.16); }
+    [hidden] { display: none !important; }
 
-    /* ---------------------------------------------------------------- */
-    /* Fixed 36 px control panel                                         */
-    /* ---------------------------------------------------------------- */
+    :focus-visible { outline: 1px solid var(--line-strong); outline-offset: 2px; }
+    input:focus-visible { outline: none; }
 
+    #stage, .settings-body, .ext-list {
+      scrollbar-width: thin;
+      scrollbar-color: #2A2D34 transparent;
+    }
+    #stage::-webkit-scrollbar,
+    .settings-body::-webkit-scrollbar,
+    .ext-list::-webkit-scrollbar { width: 10px; height: 10px; }
+    #stage::-webkit-scrollbar-track,
+    .settings-body::-webkit-scrollbar-track,
+    .ext-list::-webkit-scrollbar-track { background: transparent; }
+    #stage::-webkit-scrollbar-thumb,
+    .settings-body::-webkit-scrollbar-thumb,
+    .ext-list::-webkit-scrollbar-thumb {
+      background: #24272D;
+      border: 3px solid var(--bg);
+      border-radius: 999px;
+    }
+    #stage::-webkit-scrollbar-thumb:hover,
+    .settings-body::-webkit-scrollbar-thumb:hover,
+    .ext-list::-webkit-scrollbar-thumb:hover { background: #343841; }
+
+    /* Toolbar — 36 px, matches PANEL_HEIGHT in browser.rs */
     #toolbar {
       position: fixed;
       inset: 0 0 auto 0;
@@ -54,129 +81,99 @@
       height: var(--bar);
       display: flex;
       align-items: center;
-      gap: 5px;
-      padding: 0 7px;
-      background: var(--panel);
-      border-bottom: 1px solid #242428;
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
+      gap: 6px;
+      padding: 0 8px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
     }
 
     body.compact #toolbar { display: none; }
 
-    .cluster {
-      display: flex;
-      align-items: center;
-      gap: 3px;
-      flex: 0 0 auto;
-    }
+    .tb-cluster { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+    .tb-divider { width: 1px; height: 16px; margin: 0 3px; background: var(--line); }
 
-    .tb-btn {
+    .icon-btn {
       width: 26px;
       height: 26px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: inline-grid;
+      place-items: center;
       padding: 0;
       border: 1px solid transparent;
       border-radius: 6px;
       background: transparent;
-      color: #c9c9d1;
-      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      color: var(--text-2);
+      transition: transform 160ms var(--ease), opacity 160ms var(--ease);
     }
-
-    .tb-btn svg { width: 15px; height: 15px; display: block; }
-
-    .tb-btn:hover:not(:disabled) {
-      background: var(--panel-3);
-      color: #ffffff;
+    .icon-btn svg { width: 15px; height: 15px; display: block; }
+    .icon-btn:hover:not(:disabled) {
+      background: var(--raised-2);
+      border-color: var(--line);
+      color: var(--text);
     }
+    .icon-btn:active:not(:disabled) { transform: scale(0.96); }
+    .icon-btn:disabled { opacity: 0.3; cursor: default; }
+    .icon-btn.active { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
 
-    .tb-btn:active:not(:disabled) { transform: translateY(0.5px); }
-
-    .tb-btn:disabled {
-      opacity: 0.32;
-      cursor: default;
-    }
-
-    .tb-btn.active {
-      background: rgba(92, 141, 255, 0.16);
-      border-color: rgba(92, 141, 255, 0.45);
-      color: #a8c2ff;
-    }
-
-    .tb-btn.wake {
-      background: rgba(255, 196, 92, 0.12);
-      border-color: rgba(255, 196, 92, 0.35);
-      color: #ffd58a;
-    }
-
-    .presets { gap: 4px; margin-left: 2px; }
-
-    .preset {
-      height: 26px;
-      display: inline-flex;
+    .platform-dock {
+      position: relative;
+      display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 0 8px;
+      gap: 2px;
+      height: 26px;
+      padding: 2px;
+      margin-left: 2px;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #19191d;
-      color: #dcdce2;
-      font-size: 11.5px;
-      font-weight: 600;
-      letter-spacing: 0.1px;
-      white-space: nowrap;
-      transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.015);
     }
-
-    .preset .plus {
-      font-size: 14px;
-      line-height: 1;
-      font-weight: 500;
-      opacity: 0.75;
+    .dock-glider {
+      position: absolute;
+      left: 2px;
+      top: 2px;
+      width: 24px;
+      height: 20px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--raised-2);
+      opacity: 0;
+      transform: translateX(0);
+      transition: transform 180ms var(--ease), opacity 180ms var(--ease);
+      pointer-events: none;
     }
-
-    .preset.yt:hover {
-      background: rgba(255, 45, 85, 0.13);
-      border-color: rgba(255, 45, 85, 0.55);
-      color: #ff8fa4;
+    .dock-btn {
+      position: relative;
+      z-index: 1;
+      width: 24px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: none;
+      color: var(--text-3);
     }
-
-    .preset.tw:hover {
-      background: rgba(145, 70, 255, 0.14);
-      border-color: rgba(145, 70, 255, 0.6);
-      color: #c6a3ff;
-    }
+    .dock-btn svg { width: 13px; height: 13px; }
+    .dock-btn:hover { color: var(--text); }
+    .dock-btn.active[data-site="yt"] { color: var(--yt); }
+    .dock-btn.active[data-site="tw"] { color: var(--tw); }
 
     .address {
-      flex: 0 1 340px;
-      min-width: 122px;
+      flex: 0 1 300px;
+      min-width: 118px;
       height: 26px;
       display: flex;
       align-items: center;
       gap: 6px;
       padding: 0 8px;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #18181c;
-      transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.02);
     }
-
-    .address:focus-within {
-      border-color: rgba(92, 141, 255, 0.65);
-      background: #1b1b20;
-      box-shadow: 0 0 0 2px rgba(92, 141, 255, 0.14);
-    }
-
-    .address .lock {
-      width: 12px;
-      height: 12px;
-      color: #6fcf97;
-      flex: 0 0 auto;
-      opacity: 0.9;
-    }
-
+    .address:focus-within { border-color: var(--line-strong); background: var(--raised); }
+    .address .lock { width: 12px; height: 12px; flex: 0 0 auto; color: var(--text-3); }
     #addressInput {
+      flex: 1 1 auto;
       width: 100%;
       min-width: 0;
       height: 100%;
@@ -184,342 +181,773 @@
       border: 0;
       outline: 0;
       background: transparent;
-      color: #e7e7ec;
+      color: var(--text);
       font-size: 11.5px;
       user-select: text;
     }
+    #addressInput::placeholder { color: var(--text-3); }
 
-    #addressInput::placeholder { color: #74747f; }
+    .spinner {
+      flex: 0 0 auto;
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid rgba(255, 255, 255, 0.16);
+      border-top-color: var(--text);
+      border-radius: 50%;
+      opacity: 0;
+      animation: spin 700ms linear infinite;
+      animation-play-state: paused;
+    }
+    body.busy .spinner { opacity: 1; animation-play-state: running; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
+    .tab-area { flex: 1 1 220px; min-width: 0; height: 28px; display: flex; align-items: center; }
     .tabs {
-      flex: 1 1 220px;
+      position: relative;
+      flex: 1 1 auto;
       min-width: 0;
-      height: 28px;
+      height: 100%;
       display: flex;
       align-items: center;
       gap: 4px;
       overflow-x: auto;
       overflow-y: hidden;
       scrollbar-width: none;
-      -ms-overflow-style: none;
-      mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0, #000 5px, #000 calc(100% - 5px), transparent 100%);
     }
-
     .tabs::-webkit-scrollbar { display: none; }
-
-    .tabs:empty::before {
+    .tabs[data-empty="true"]::before {
       content: "Нет открытых вкладок";
       padding-left: 7px;
-      color: #5f5f69;
-      font-size: 11px;
+      color: var(--text-3);
+      font-size: 10.5px;
       white-space: nowrap;
     }
 
     .tab {
+      position: relative;
+      z-index: 1;
       flex: 0 0 auto;
-      max-width: 178px;
-      min-width: 88px;
+      max-width: 190px;
+      min-width: 92px;
       height: 26px;
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 0 4px 0 8px;
+      padding: 0 3px 0 8px;
       border: 1px solid transparent;
       border-radius: 6px;
-      background: #18181c;
-      color: #b9b9c3;
+      background: transparent;
+      color: var(--text-2);
       font-size: 11.5px;
       cursor: default;
-      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
     }
+    .tab:hover { background: var(--raised); border-color: var(--line); color: var(--text); }
+    .tab.active { background: var(--raised); border-color: var(--line-strong); color: var(--text); }
+    .tab.sleeping { opacity: 0.62; }
 
-    .tab:hover { background: #202026; color: #e8e8ee; }
+    .site-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+    .site-dot.yt { background: var(--yt); }
+    .site-dot.tw { background: var(--tw); }
+    .site-dot.other { background: #7D8BA1; }
 
-    .tab.active {
-      background: #27272e;
-      border-color: #3b3b46;
-      color: #ffffff;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
-    }
-
-    .tab.sleeping { background: #151519; color: #8b8b96; }
-    .tab.sleeping.active { border-color: #4a4a3a; }
-
-    .dot {
-      flex: 0 0 auto;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #5b5b66;
-    }
-
-    .dot.yt { background: var(--yt); }
-    .dot.tw { background: var(--tw); }
-    .dot.other { background: #7d8ba1; }
-
-    .tab-title {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .zz {
-      flex: 0 0 auto;
-      color: #8d8d75;
-      font-size: 9px;
-      letter-spacing: -0.4px;
-      font-weight: 700;
-    }
-
+    .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sleep-mark { flex: 0 0 auto; width: 10px; height: 10px; color: var(--text-3); }
     .tab-close {
       flex: 0 0 auto;
       width: 17px;
       height: 17px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: inline-grid;
+      place-items: center;
       padding: 0;
       border: 0;
       border-radius: 4px;
       background: transparent;
-      color: #777782;
-      font-size: 15px;
+      color: var(--text-3);
+      font-size: 14px;
       line-height: 1;
     }
+    .tab-close:hover { background: var(--raised-2); color: var(--text); }
 
-    .tab-close:hover { background: #3a3a43; color: #ffffff; }
-
-    .actions { margin-left: 1px; }
-
-    .tb-btn.token { color: #c6a3ff; }
-    .tb-btn.token:hover:not(:disabled) {
-      background: rgba(145, 70, 255, 0.16);
-      color: #e6dbff;
-    }
-
-    .tb-btn.ext { color: #8fb8ff; }
-    .tb-btn.ext:hover:not(:disabled) {
-      background: rgba(92, 141, 255, 0.16);
-      color: #d6e4ff;
-    }
-
-    /* Inline token import bar. It must stay inside the 36 px strip: native
-       child WebViews are composited above the main WebView, so a normal modal
-       below the toolbar would be hidden. */
-    .import-bar {
+    .tab-glider {
       position: absolute;
-      inset: 0;
-      z-index: 5;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 0 7px;
-      background: var(--panel);
-      border-bottom: 1px solid #242428;
+      left: 0;
+      bottom: 0;
+      z-index: 2;
+      width: 1px;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--text);
+      opacity: 0;
+      transform-origin: left center;
+      transform: translateX(0) scaleX(0);
+      transition: transform 180ms var(--ease), opacity 180ms var(--ease);
+      pointer-events: none;
     }
+    .tab-glider[data-site="yt"] { background: var(--yt); }
+    .tab-glider[data-site="tw"] { background: var(--tw); }
+    .tab-glider[data-site="other"] { background: var(--text-2); }
 
-    #toolbar.importing > :not(.import-bar) { visibility: hidden; }
-
-    .import-key {
+    .tb-actions { margin-left: 1px; }
+    .hib-dot {
       flex: 0 0 auto;
-      width: 15px;
-      height: 15px;
-      color: #c6a3ff;
+      width: 6px;
+      height: 6px;
+      margin: 0 3px;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--text-3);
+      transition: opacity 160ms var(--ease);
     }
+    .hib-dot.awake { background: var(--ok); box-shadow: none; }
 
-    .import-label {
-      flex: 0 0 auto;
-      color: #c6a3ff;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    #importInput {
-      flex: 1 1 auto;
-      min-width: 110px;
-      height: 26px;
-      padding: 0 8px;
-      border: 1px solid rgba(145, 70, 255, 0.55);
-      border-radius: 6px;
-      background: #18181c;
-      color: #ece6ff;
-      font-size: 11.5px;
-      outline: 0;
-      user-select: text;
-    }
-
-    #importInput:focus {
-      border-color: rgba(176, 120, 255, 0.9);
-      box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.16);
-    }
-
-    #importInput::placeholder { color: #7b728c; }
-
-    .import-submit {
-      height: 26px;
-      padding: 0 12px;
-      border: 1px solid rgba(145, 70, 255, 0.6);
-      border-radius: 6px;
-      background: rgba(145, 70, 255, 0.2);
-      color: #e4d7ff;
-      font-size: 11.5px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    .import-submit:hover:not(:disabled) { background: rgba(145, 70, 255, 0.3); }
-    .import-submit:disabled { opacity: 0.55; cursor: default; }
-
-    #importCancel { font-size: 16px; }
-
-    .toast.ok {
-      border-color: rgba(94, 214, 138, 0.4);
-      background: #14261a;
-      color: #a9f0c2;
-    }
-
-    /* ---------------------------------------------------------------- */
-    /* Stage / home                                                      */
-    /* ---------------------------------------------------------------- */
-
+    /* Stage / home */
     #stage {
       position: fixed;
       inset: var(--bar) 0 0 0;
       overflow: auto;
       background:
-        radial-gradient(900px 520px at 8% -18%, rgba(255, 0, 51, 0.1), transparent 62%),
-        radial-gradient(880px 540px at 94% -20%, rgba(145, 70, 255, 0.12), transparent 64%),
+        radial-gradient(1000px 520px at 50% -28%, rgba(255, 255, 255, 0.035), transparent 72%),
         var(--bg);
     }
-
     body.compact #stage { inset: 0 0 0 0; }
-
-    #stage::before {
-      content: "";
-      position: fixed;
-      inset: var(--bar) 0 0 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-      background-size: 64px 64px;
-      mask-image: radial-gradient(circle at 50% 0, #000 0, transparent 72%);
-    }
-
-    body.compact #stage::before { inset: 0; }
+    body.settings-open #stage { overflow: hidden; }
 
     .home {
       width: 100%;
-      max-width: 1120px;
+      max-width: 1080px;
       min-height: 100%;
       margin: 0 auto;
-      padding: 26px 34px 38px;
+      padding: 20px 28px 24px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
     }
 
-    /* -------- header: logo + live profile badge -------- */
-
-    .hero {
+    .home-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      flex-wrap: wrap;
-      padding: 2px 2px 0;
+      min-width: 0;
     }
-
-    .brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
-
-    .logo {
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark {
       flex: 0 0 auto;
-      width: 46px;
-      height: 46px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
-      background: linear-gradient(145deg, #2a1420 0%, #1b1428 48%, #101019 100%);
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.07);
-      color: #ffffff;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--text);
     }
+    .brand-mark svg { width: 18px; height: 18px; }
+    .brand h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.35px; line-height: 1.1; }
+    .brand p { margin: 3px 0 0; color: var(--text-3); font-size: 10.5px; letter-spacing: 0.1px; }
+    .head-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
-    .logo svg { width: 24px; height: 24px; }
-
-    .brand h1 {
-      margin: 0;
-      font-size: 23px;
-      line-height: 1.05;
-      letter-spacing: -0.9px;
-      font-weight: 700;
-    }
-
-    .brand h1 span {
-      background: linear-gradient(95deg, #ff5f7a, #c07bff 55%, #7aa2ff);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    .tagline { margin: 4px 0 0; color: #7d7d8a; font-size: 11px; letter-spacing: 0.15px; }
-
-    .status-badge {
+    .session-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 13px;
-      border: 1px solid #262630;
+      gap: 7px;
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: rgba(22, 22, 29, 0.85);
-      color: #a0a0ac;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-2);
       font-size: 10.5px;
       white-space: nowrap;
     }
+    .session-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 
-    .status-badge b { color: #ffffff; font-weight: 650; }
-    .status-badge .sep { color: #3b3b46; }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #5ed68a;
-      box-shadow: 0 0 0 4px rgba(94, 214, 138, 0.1);
-      animation: livePulse 2.6s ease-in-out infinite;
-    }
-
-    @keyframes livePulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    /* -------- central quick open / search -------- */
-
-    .spotlight {
+    .command { display: flex; flex-direction: column; gap: 8px; }
+    .command-bar {
       display: flex;
       align-items: center;
-      gap: 11px;
-      height: 54px;
-      padding: 0 9px 0 16px;
-      border: 1px solid #262630;
-      border-radius: 15px;
-      background: linear-gradient(180deg, #17171f 0%, #131319 100%);
-      transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+      gap: 10px;
+      min-height: 52px;
+      padding: 0 8px 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .command-bar:focus-within { border-color: var(--line-strong); background: var(--raised); }
+    .command-bar > svg { flex: 0 0 auto; width: 16px; height: 16px; color: var(--text-3); }
+    .command-bar input {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 50px;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 13.5px;
+      user-select: text;
+    }
+    .command-bar input::placeholder { color: var(--text-3); }
+
+    .detect-badge {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 22px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .detect-badge[data-kind="yt"] { color: #FF7A8E; border-color: rgba(255, 0, 51, 0.34); }
+    .detect-badge[data-kind="tw"] { color: #BE97FF; border-color: rgba(145, 70, 255, 0.34); }
+    .detect-badge[data-kind="link"] { color: var(--text-2); border-color: var(--line-strong); }
+
+    .command-go {
+      flex: 0 0 auto;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg);
+      font-size: 11.5px;
+      font-weight: 650;
+      transition: transform 160ms var(--ease), opacity 160ms var(--ease);
+    }
+    .command-go svg { width: 12px; height: 12px; }
+    .command-go:hover { opacity: 0.9; }
+    .command-go:active { transform: scale(0.97); }
+
+    .command-hints {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 0 2px;
+      color: var(--text-3);
+      font-size: 10.5px;
+    }
+    .hint-sep { color: #31353C; }
+    .hint-right { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+
+    kbd {
+      min-width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+      border: 1px solid var(--line);
+      border-bottom-color: var(--line-strong);
+      border-radius: 4px;
+      background: var(--raised);
+      color: var(--text-2);
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-variant-numeric: tabular-nums;
     }
 
-    .spotlight:focus-within {
-      border-color: rgba(122, 162, 255, 0.55);
-      background: #181822;
-      box-shadow: 0 0 0 3px rgba(92, 141, 255, 0.11), 0 18px 40px -22px rgba(92, 141, 255, 0.7);
+    .launch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+    .platform-card {
+      --accent: var(--text);
+      --spot: rgba(255, 255, 255, 0.1);
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 142px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      text-align: left;
+      transition: transform 170ms var(--ease), border-color 170ms var(--ease);
+    }
+    .platform-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+    .platform-card.yt { --accent: var(--yt); --spot: rgba(255, 0, 51, 0.16); }
+    .platform-card.tw { --accent: var(--tw); --spot: rgba(145, 70, 255, 0.18); }
+    .platform-card > *:not(.spotlight) { position: relative; z-index: 1; }
+
+    .spotlight {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--spot) 0%, transparent 66%);
+      transform: translate3d(calc(var(--mx, -999px) - 140px), calc(var(--my, -999px) - 140px), 0);
+      opacity: 0;
+      transition: opacity 180ms var(--ease);
+      pointer-events: none;
+    }
+    .platform-card:hover .spotlight { opacity: 1; }
+
+    .pc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .pc-logo {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--accent);
+    }
+    .pc-logo svg { width: 19px; height: 19px; }
+    .pc-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 22px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8.5px;
+      letter-spacing: 0.45px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .pc-state .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--text-3);
+    }
+    .pc-state.awake { color: #9BE7B6; border-color: rgba(94, 214, 138, 0.3); }
+    .pc-state.awake .dot { background: var(--ok); box-shadow: none; }
+    .pc-state.sleeping { color: var(--text-2); }
+
+    .pc-body { margin-top: 12px; }
+    .pc-body h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.2px; }
+    .pc-body p { margin: 4px 0 0; color: var(--text-2); font-size: 11px; line-height: 1.45; }
+    .pc-foot {
+      margin-top: auto;
+      padding-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-3);
+      font-size: 10.5px;
+    }
+    .pc-open { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); }
+    .pc-open svg { width: 12px; height: 12px; transition: transform 160ms var(--ease); }
+    .platform-card:hover .pc-open svg { transform: translateX(2px); }
+
+    .panel {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .panel-title h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -0.1px; }
+    .panel-title p { margin: 3px 0 0; color: var(--text-3); font-size: 10.5px; }
+    .panel-tools { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+    .count-chip {
+      min-width: 22px;
+      height: 20px;
+      padding: 0 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-variant-numeric: tabular-nums;
     }
 
-    .spotlight > svg { flex: 0 0 auto; width: 18px; height: 18px; color: #6e6e7c; }
+    .ghost-btn {
+      height: 26px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-2);
+      font-size: 10.5px;
+      font-weight: 600;
+      transition: transform 160ms var(--ease), opacity 160ms var(--ease);
+    }
+    .ghost-btn:hover { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
+    .ghost-btn:active { transform: scale(0.97); }
+    .ghost-btn svg { width: 12px; height: 12px; }
+    .ghost-btn.primary { background: rgba(255, 255, 255, 0.07); border-color: var(--line-strong); color: var(--text); }
 
-    .spotlight input {
+    .resume-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .resume-card {
+      position: relative;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 9px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.015);
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: transform 160ms var(--ease), border-color 160ms var(--ease), opacity 160ms var(--ease);
+    }
+    .resume-card:hover { border-color: var(--line-strong); background: var(--raised); transform: translateY(-1px); }
+    .resume-logo {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-2);
+    }
+    .resume-logo svg { width: 15px; height: 15px; }
+    .resume-card.yt .resume-logo { color: #FF7A8E; }
+    .resume-card.tw .resume-logo { color: #BE97FF; }
+    .resume-copy { min-width: 0; }
+    .resume-name {
+      display: block;
+      color: var(--text);
+      font-size: 11.5px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-right: 14px;
+    }
+    .resume-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 3px;
+      min-width: 0;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .resume-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .resume-status i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--text-3);
+    }
+    .resume-status.active { color: #9BE7B6; }
+    .resume-status.active i { background: var(--ok); box-shadow: none; }
+    .resume-status.hibernated { color: var(--text-2); }
+    .resume-status.saved i { box-shadow: none; background: var(--text-3); }
+    .resume-time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .resume-del {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: var(--raised-2);
+      color: var(--text-3);
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 140ms var(--ease);
+    }
+    .resume-card:hover .resume-del,
+    .resume-del:focus-visible { opacity: 1; }
+    .resume-del:hover { color: var(--danger); }
+    .resume-empty { margin: 6px 0 2px; color: var(--text-3); font-size: 11px; line-height: 1.55; }
+
+    .fav-form { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .fav-form input {
+      flex: 1 1 140px;
+      min-width: 0;
+      height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      outline: 0;
+      user-select: text;
+    }
+    .fav-form input:focus { border-color: var(--line-strong); }
+    .fav-form input::placeholder { color: var(--text-3); }
+
+    .statusbar {
+      margin-top: auto;
+      padding: 9px 2px 0;
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--text-3);
+      font-size: 10px;
+    }
+    .metrics { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .metric { display: inline-flex; align-items: baseline; gap: 5px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .metric .label {
+      font-family: var(--sans);
+      font-size: 8.5px;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+    .metric b { color: var(--text-2); font-size: 10.5px; font-weight: 600; }
+    .metric.ram b { min-width: 52px; }
+    .metric.cpu b { min-width: 40px; }
+    .status-keys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .key-hint { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+    .sleeping { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .sleep-card {
+      width: min(520px, 100%);
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .sleep-icon {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 14px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--raised);
+      color: var(--text-2);
+    }
+    .sleep-icon svg { width: 17px; height: 17px; }
+    .sleep-kicker {
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+    .sleep-card h2 { margin: 8px 0 0; font-size: 20px; letter-spacing: -0.3px; line-height: 1.3; overflow-wrap: anywhere; }
+    .sleep-url {
+      margin-top: 8px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.5;
+      word-break: break-all;
+      user-select: text;
+    }
+    .sleep-note { margin: 12px 0 0; color: var(--text-2); font-size: 11.5px; line-height: 1.55; }
+    .sleep-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+
+    .btn-primary, .btn-ghost {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+      transition: transform 160ms var(--ease), opacity 160ms var(--ease);
+    }
+    .btn-primary { border: 1px solid var(--line-strong); background: var(--text); color: var(--bg); }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active, .btn-ghost:active { transform: scale(0.97); }
+    .btn-ghost { border: 1px solid var(--line); background: transparent; color: var(--text-2); }
+    .btn-ghost:hover { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
+
+    .toast {
+      position: fixed;
+      top: 6px;
+      left: 50%;
+      z-index: 650;
+      max-width: min(560px, 70vw);
+      padding: 5px 11px;
+      border: 1px solid rgba(255, 107, 107, 0.35);
+      border-radius: 6px;
+      background: #1A1113;
+      color: #FFB4B4;
+      font-size: 10.5px;
+      line-height: 15px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -6px);
+      transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.ok { border-color: rgba(94, 214, 138, 0.35); background: #0F1A14; color: #A9F0C2; }
+
+    .show-panel {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 200;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      color: var(--text-2);
+      font-size: 10.5px;
+    }
+    .show-panel:hover { background: var(--raised-2); color: var(--text); }
+    .show-panel svg { width: 13px; height: 13px; }
+    body.compact .show-panel { display: inline-flex; }
+
+    /* Settings dialog */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(5, 6, 8, 0.72);
+      opacity: 0;
+      transition: opacity 180ms var(--ease);
+    }
+    .overlay.open { opacity: 1; }
+
+    .settings {
+      width: min(860px, 100%);
+      max-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      background: var(--surface);
+      transform: translateY(8px) scale(0.995);
+      transition: transform 180ms var(--ease);
+    }
+    .overlay.open .settings { transform: none; }
+
+    .settings-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.015);
+    }
+    .settings-head .brand-mark { width: 30px; height: 30px; border-radius: 8px; }
+    .settings-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
+    .settings-head p { margin: 3px 0 0; color: var(--text-3); font-size: 10px; }
+
+    .settings-body {
+      padding: 14px 16px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .set-card {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.012);
+    }
+    .set-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .set-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .set-card-title h3 {
+      margin: 0;
+      color: var(--text-2);
+      font-size: 10.5px;
+      font-weight: 650;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .set-badge {
+      flex: 0 0 auto;
+      height: 18px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.45px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .set-badge.ok { color: #9BE7B6; border-color: rgba(94, 214, 138, 0.3); }
+    .set-badge.core { color: var(--text-2); border-color: var(--line-strong); }
+
+    .token-form { display: flex; align-items: center; gap: 6px; }
+    .token-field {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 4px 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--bg);
+    }
+    .token-field:focus-within { border-color: var(--line-strong); }
+    .token-field input {
       flex: 1 1 auto;
       min-width: 0;
       height: 100%;
@@ -527,808 +955,579 @@
       border: 0;
       outline: 0;
       background: transparent;
-      color: #e9e9ef;
-      font-size: 13px;
-      user-select: text;
-    }
-
-    .spotlight input::placeholder { color: #6a6a77; }
-
-    .spotlight button {
-      flex: 0 0 auto;
-      height: 38px;
-      padding: 0 20px;
-      border: 1px solid rgba(122, 162, 255, 0.45);
-      border-radius: 10px;
-      background: linear-gradient(180deg, rgba(92, 141, 255, 0.24), rgba(92, 141, 255, 0.14));
-      color: #dbe6ff;
-      font-size: 11.5px;
-      font-weight: 650;
-      letter-spacing: 0.2px;
-      transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
-    }
-
-    .spotlight button:hover {
-      background: rgba(92, 141, 255, 0.3);
-      border-color: rgba(140, 175, 255, 0.7);
-      transform: translateY(-1px);
-    }
-
-    /* -------- big launch cards -------- */
-
-    .launch-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .launch {
-      --accent: #5c8dff;
-      --accent-soft: rgba(92, 141, 255, 0.14);
-      position: relative;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      min-height: 146px;
-      padding: 20px;
-      border: 1px solid #262630;
-      border-radius: 17px;
-      background: #16161d;
       color: var(--text);
-      text-align: left;
-      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-    }
-
-    .launch::before {
-      content: "";
-      position: absolute;
-      right: -70px;
-      top: -90px;
-      width: 230px;
-      height: 230px;
-      border-radius: 50%;
-      background: radial-gradient(circle, var(--accent-soft) 0%, transparent 68%);
-      pointer-events: none;
-    }
-
-    .launch.yt { --accent: #ff0033; --accent-soft: rgba(255, 0, 51, 0.2); }
-    .launch.tw { --accent: #9146ff; --accent-soft: rgba(145, 70, 255, 0.22); }
-
-    .launch:hover {
-      transform: translateY(-3px);
-      background: #181820;
-      box-shadow: 0 24px 50px -28px var(--accent);
-    }
-
-    .launch.yt:hover { border-color: rgba(255, 0, 51, 0.55); }
-    .launch.tw:hover { border-color: rgba(145, 70, 255, 0.6); }
-
-    .launch-icon {
-      width: 42px;
-      height: 42px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 12px;
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-
-    .launch-icon svg { width: 21px; height: 21px; }
-    .launch h3 { margin: 0; font-size: 19px; letter-spacing: -0.4px; }
-    .launch p { margin: 2px 0 0; color: #82828f; font-size: 11px; }
-
-    .launch .go {
-      margin-top: auto;
-      padding-top: 14px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--accent);
+      font-family: var(--mono);
       font-size: 10.5px;
-      font-weight: 650;
-      letter-spacing: 0.2px;
-    }
-
-    .launch .go svg { width: 12px; height: 12px; }
-
-    /* -------- panels, favorites, extensions, shortcuts -------- */
-
-    .grid-two {
-      display: grid;
-      grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr);
-      gap: 14px;
-      align-items: start;
-    }
-
-    .stack { display: flex; flex-direction: column; gap: 14px; }
-
-    .panel {
-      padding: 16px 17px;
-      border: 1px solid #262630;
-      border-radius: 17px;
-      background: #16161d;
-    }
-
-    .panel-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .panel-head h2 {
-      margin: 0;
-      color: #ececf2;
-      font-size: 12px;
-      font-weight: 650;
-      letter-spacing: 0.25px;
-    }
-
-    .panel-tools { display: flex; align-items: center; gap: 8px; }
-    .sub { color: #6c6c79; font-size: 10px; }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 20px;
-      height: 19px;
-      padding: 0 6px;
-      border: 1px solid #30303c;
-      border-radius: 6px;
-      background: #1d1d26;
-      color: #b9b9c6;
-      font-size: 10px;
-      font-weight: 650;
-    }
-
-    .mini-btn {
-      height: 27px;
-      padding: 0 10px;
-      border: 1px solid #30303c;
-      border-radius: 8px;
-      background: #1d1d26;
-      color: #c6c6d2;
-      font-size: 10.5px;
-      font-weight: 600;
-      transition: background 130ms ease, color 130ms ease, border-color 130ms ease;
-    }
-
-    .mini-btn:hover { background: #262632; color: #ffffff; border-color: #40404e; }
-
-    .mini-btn.primary {
-      border-color: rgba(122, 162, 255, 0.45);
-      background: rgba(92, 141, 255, 0.16);
-      color: #d7e3ff;
-    }
-
-    .mini-btn.primary:hover { background: rgba(92, 141, 255, 0.24); }
-
-    .fav-form { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
-
-    .fav-form input {
-      flex: 1 1 150px;
-      min-width: 0;
-      height: 31px;
-      padding: 0 10px;
-      border: 1px solid #2c2c37;
-      border-radius: 8px;
-      background: #1a1a22;
-      color: #e6e6ee;
-      font-size: 11px;
-      outline: 0;
       user-select: text;
     }
-
-    .fav-form input:focus {
-      border-color: rgba(122, 162, 255, 0.6);
-      box-shadow: 0 0 0 2px rgba(92, 141, 255, 0.12);
-    }
-
-    .fav-form input::placeholder { color: #6a6a77; }
-
-    .fav-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-      gap: 9px;
-    }
-
-    .fav-card {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      padding: 9px 11px;
-      border: 1px solid #24242e;
-      border-radius: 11px;
-      background: #1a1a22;
-      color: inherit;
-      text-align: left;
-      cursor: pointer;
-      transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
-    }
-
-    .fav-card:hover {
-      border-color: #3a3a49;
-      background: #1e1e28;
-      transform: translateY(-1px);
-    }
-
-    .fav-avatar {
+    .token-field input::placeholder { color: var(--text-3); font-family: var(--sans); }
+    .token-eye {
       flex: 0 0 auto;
-      width: 30px;
-      height: 30px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 9px;
-      background: rgba(255, 255, 255, 0.05);
-      color: #c9d3ea;
-    }
-
-    .fav-avatar svg { width: 15px; height: 15px; }
-    .fav-card.yt .fav-avatar { background: rgba(255, 0, 51, 0.13); color: #ff5d78; }
-    .fav-card.tw .fav-avatar { background: rgba(145, 70, 255, 0.16); color: #b98cff; }
-
-    .fav-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-
-    .fav-name {
-      color: #e6e6ee;
-      font-size: 11.5px;
-      font-weight: 600;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .fav-url {
-      color: #70707d;
-      font-size: 9.5px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .fav-del {
-      position: absolute;
-      top: 5px;
-      right: 5px;
-      width: 19px;
-      height: 19px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
       padding: 0;
       border: 0;
       border-radius: 5px;
-      background: rgba(20, 20, 26, 0.85);
-      color: #8a8a97;
-      font-size: 13px;
-      line-height: 1;
-      opacity: 0;
-      transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+      background: transparent;
+      color: var(--text-3);
     }
+    .token-eye:hover { background: var(--raised-2); color: var(--text); }
+    .token-eye svg { width: 14px; height: 14px; }
+    .token-submit { flex: 0 0 auto; height: 32px; padding: 0 12px; }
+    .token-submit:disabled { opacity: 0.55; cursor: default; }
 
-    .fav-card:hover .fav-del,
-    .fav-del:focus-visible { opacity: 1; }
-
-    .fav-del:hover { background: #3a2630; color: #ff8a9b; }
-
-    .fav-empty { margin: 2px 0; color: #6b6b78; font-size: 11px; line-height: 1.55; }
-
-    .ext-list {
-      display: flex;
-      flex-direction: column;
-      gap: 7px;
-      max-height: 228px;
-      margin-bottom: 10px;
-      overflow: auto;
+    .cookie-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+    .cookie-chip {
+      height: 18px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.2px;
     }
+    .cookie-chip.on { color: var(--text-2); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.03); }
 
-    .ext-item {
+    .set-note { margin: 9px 0 0; color: var(--text-3); font-size: 10px; line-height: 1.5; }
+    .set-note b { color: var(--text-2); font-weight: 600; }
+    .session-status {
       display: flex;
       align-items: center;
-      gap: 9px;
-      min-width: 0;
-      padding: 8px 10px;
-      border: 1px solid #24242e;
-      border-radius: 9px;
-      background: #1a1a22;
+      gap: 6px;
+      margin-top: 9px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-variant-numeric: tabular-nums;
     }
-
-    .ext-dot {
-      flex: 0 0 auto;
+    .session-status .dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #6c6c79;
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--text-3);
     }
+    .session-status.ok { color: var(--text-2); }
+    .session-status.ok .dot { background: var(--ok); box-shadow: none; }
 
-    .ext-dot.active { background: #5ed68a; box-shadow: 0 0 0 3px rgba(94, 214, 138, 0.09); }
-    .ext-dot.installed { background: #7aa2ff; }
-    .ext-dot.disabled { background: #c26464; }
-    .ext-dot.pending { background: #e0b25c; }
-
+    .ext-list { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow: auto; margin-bottom: 9px; }
+    .ext-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--bg);
+    }
+    .ext-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+    .ext-dot.active { background: var(--ok); }
+    .ext-dot.installed { background: var(--text-2); }
+    .ext-dot.disabled { background: var(--danger); }
+    .ext-dot.pending { background: var(--warn); }
     .ext-name {
       flex: 1 1 auto;
       min-width: 0;
-      color: #dcdce4;
-      font-size: 11px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      color: var(--text-2);
+      font-size: 10.5px;
     }
-
-    .ext-version { color: #6f6f7c; font-size: 9.5px; }
-
+    .ext-version { color: var(--text-3); font-family: var(--mono); font-size: 9px; }
     .ext-status {
       flex: 0 0 auto;
-      color: #777784;
-      font-size: 9px;
-      letter-spacing: 0.6px;
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.45px;
       text-transform: uppercase;
     }
+    .ext-empty { padding: 8px 9px; color: var(--text-3); font-size: 10.5px; line-height: 1.5; }
+    .ext-open { width: 100%; justify-content: center; height: 30px; }
 
-    .ext-note { margin: 0 0 10px; color: #747482; font-size: 10.5px; line-height: 1.55; }
-    .ext-note b { color: #9a9aaa; font-weight: 600; }
-
-    .open-ext {
-      width: 100%;
-      height: 34px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 7px;
-      border: 1px solid rgba(145, 70, 255, 0.42);
-      border-radius: 9px;
-      background: rgba(145, 70, 255, 0.13);
-      color: #d9c8ff;
-      font-size: 11px;
-      font-weight: 650;
-      transition: background 130ms ease, border-color 130ms ease;
-    }
-
-    .open-ext:hover { background: rgba(145, 70, 255, 0.2); border-color: rgba(176, 120, 255, 0.7); }
-    .open-ext svg { width: 13px; height: 13px; }
-
-    .cheats { display: flex; flex-direction: column; gap: 9px; }
-
-    .cheat {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      color: #8f8f9c;
-      font-size: 10.5px;
-      line-height: 1.45;
-    }
-
-    .cheat .keys { flex: 0 0 auto; display: flex; gap: 3px; }
-
-    .cheat kbd {
-      min-width: 22px;
-      height: 20px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 6px;
-      border: 1px solid #34343f;
-      border-bottom-width: 2px;
-      border-radius: 5px;
-      background: #1d1d26;
-      color: #d3d3de;
-      font-family: "Cascadia Mono", Consolas, monospace;
-      font-size: 9.5px;
-      font-weight: 600;
-    }
-
-    .cheat .z {
-      font-family: "Cascadia Mono", Consolas, monospace;
-      font-weight: 700;
-      letter-spacing: -1px;
-      color: #c9c9a0;
-      font-size: 10px;
-    }
-
-    .ime {
-      display: inline-flex;
-      align-items: center;
-      height: 17px;
-      padding: 0 5px;
-      border: 1px solid #383841;
-      border-radius: 4px;
-      color: #bdbdc8;
-      font-size: 9.5px;
-      font-weight: 600;
-    }
-
-    .foot {
+    .pref-list { display: flex; flex-direction: column; }
+    .pref-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 14px;
-      flex-wrap: wrap;
-      padding: 2px 3px 0;
-      color: #585864;
-      font-size: 9.5px;
-      user-select: text;
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
     }
+    .pref-row:first-child { border-top: 0; padding-top: 0; }
+    .pref-row:last-child { padding-bottom: 0; }
+    .pref-copy { min-width: 0; }
+    .pref-copy b { display: block; color: var(--text-2); font-size: 11px; font-weight: 600; }
+    .pref-copy small { display: block; margin-top: 2px; color: var(--text-3); font-size: 9.5px; line-height: 1.45; }
+    .pref-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
-    .foot code {
-      font-family: "Cascadia Mono", Consolas, monospace;
-      color: #6d6d7a;
-      overflow-wrap: anywhere;
+    .switch { position: relative; flex: 0 0 auto; width: 30px; height: 17px; display: inline-flex; }
+    .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+    .switch .track {
+      width: 30px;
+      height: 17px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--bg);
     }
-
-    /* ---------------------------------------------------------------- */
-    /* Hibernated tab                                                    */
-    /* ---------------------------------------------------------------- */
-
-    .sleeping {
-      min-height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 24px;
-    }
-
-    .sleep-card {
-      width: min(560px, 100%);
-      padding: 30px;
-      border: 1px solid rgba(255, 196, 92, 0.2);
-      border-radius: 16px;
-      background:
-        radial-gradient(500px 220px at 50% -30%, rgba(255, 196, 92, 0.11), transparent 70%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
-      box-shadow: var(--shadow);
-      text-align: center;
-    }
-
-    .sleep-icon {
-      width: 54px;
-      height: 54px;
-      margin: 0 auto 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid rgba(255, 196, 92, 0.25);
+    .switch .knob {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 13px;
+      height: 13px;
       border-radius: 50%;
-      background: rgba(255, 196, 92, 0.08);
-      color: #ffd58a;
+      background: var(--text-3);
+      transition: transform 170ms var(--ease), opacity 170ms var(--ease);
+      pointer-events: none;
     }
+    .switch input:checked + .track { background: rgba(255, 255, 255, 0.09); }
+    .switch input:checked + .track .knob { transform: translateX(13px); background: var(--text); }
+    .switch input:disabled { cursor: not-allowed; }
+    .switch input:disabled + .track { opacity: 0.55; }
 
-    .sleep-icon svg { width: 24px; height: 24px; }
-
-    .sleep-kicker {
-      color: #b9a97f;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.6px;
+    .path-row { display: flex; flex-direction: column; gap: 4px; padding: 7px 0; border-top: 1px solid var(--line); }
+    .path-row:first-child { border-top: 0; padding-top: 0; }
+    .path-row .label {
+      color: var(--text-3);
+      font-family: var(--mono);
+      font-size: 8.5px;
+      letter-spacing: 0.7px;
       text-transform: uppercase;
     }
-
-    .sleep-card h2 {
-      margin: 10px 0 0;
-      font-size: 23px;
-      line-height: 1.25;
-      letter-spacing: -0.4px;
-      overflow-wrap: anywhere;
-    }
-
-    .sleep-url {
-      margin: 10px auto 0;
-      max-width: 460px;
-      color: #80808b;
-      font-family: "Cascadia Mono", Consolas, monospace;
-      font-size: 10.5px;
-      line-height: 1.55;
+    .path-row code {
+      color: var(--text-2);
+      font-family: var(--mono);
+      font-size: 9.5px;
       overflow-wrap: anywhere;
       user-select: text;
     }
 
-    .sleep-note {
-      margin: 16px auto 0;
-      max-width: 450px;
-      color: #9696a1;
-      font-size: 12px;
-      line-height: 1.6;
-    }
-
-    .sleep-actions {
+    .settings-foot {
       display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 22px;
-    }
-
-    .primary-btn, .ghost-btn {
-      height: 32px;
-      padding: 0 15px;
-      border-radius: 7px;
-      font-size: 12px;
-      font-weight: 600;
-      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
-    }
-
-    .primary-btn {
-      border: 1px solid rgba(255, 196, 92, 0.45);
-      background: rgba(255, 196, 92, 0.14);
-      color: #ffe2a8;
-    }
-
-    .primary-btn:hover { background: rgba(255, 196, 92, 0.22); transform: translateY(-1px); }
-
-    .ghost-btn {
-      border: 1px solid var(--line);
-      background: transparent;
-      color: #a7a7b2;
-    }
-
-    .ghost-btn:hover { background: var(--panel-2); color: #e9e9ef; }
-
-    /* ---------------------------------------------------------------- */
-    /* Toast (stays inside the 36 px strip so it is visible above a      */
-    /* native child WebView)                                             */
-    /* ---------------------------------------------------------------- */
-
-    .toast {
-      position: fixed;
-      top: 5px;
-      left: 50%;
-      z-index: 300;
-      max-width: min(620px, 60vw);
-      padding: 5px 12px;
-      border: 1px solid rgba(255, 99, 99, 0.4);
-      border-radius: 6px;
-      background: #2a1719;
-      color: #ffb4b4;
-      font-size: 11px;
-      line-height: 15px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-      opacity: 0;
-      pointer-events: none;
-      transform: translate(-50%, -6px);
-      transition: opacity 140ms ease, transform 140ms ease;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .toast.show { opacity: 1; transform: translate(-50%, 0); }
-
-    .show-panel {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      z-index: 200;
-      display: none;
       align-items: center;
-      gap: 6px;
-      height: 28px;
-      padding: 0 11px;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      background: rgba(18, 18, 18, 0.88);
-      color: #cfcfd8;
-      font-size: 11px;
-      backdrop-filter: blur(8px);
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.015);
     }
+    .settings-foot span { color: var(--text-3); font-size: 9.5px; }
 
-    .show-panel:hover { background: #24242a; color: #fff; }
-    body.compact .show-panel { display: inline-flex; }
+    /* Pause decorative motion in compact / sleeping / hidden states */
+    body.compact .spinner,
+    body.settings-open .spinner,
+    body.is-hidden .spinner,
+    body.reduce-motion .spinner { animation-play-state: paused; }
 
-    [hidden] { display: none !important; }
+    body.is-hidden .spotlight { opacity: 0; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
 
     @media (max-width: 980px) {
-      .home { padding: 20px 20px 30px; }
-      .grid-two { grid-template-columns: minmax(0, 1fr); }
-      .cluster.presets .preset { padding: 0 7px; }
+      .home { padding: 18px 20px 22px; }
+      .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .address { flex-basis: 230px; }
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 720px) {
       .launch-grid { grid-template-columns: minmax(0, 1fr); }
-      .hero { align-items: flex-start; }
-      .status-badge { white-space: normal; }
+      .home-head { align-items: flex-start; flex-wrap: wrap; }
+      .session-pill { display: none; }
+      .command-hints .hint-optional { display: none; }
+      .resume-grid { grid-template-columns: minmax(0, 1fr); }
+      .settings { max-height: calc(100vh - 24px); }
+      .overlay { padding: 12px; }
     }
 
-    @media (max-height: 620px) {
-      .home { padding-top: 16px; }
-      .foot { display: none; }
+    @media (max-height: 640px) {
+      .home { padding-top: 14px; }
+      .command-bar { min-height: 46px; }
+      .command-bar input { height: 44px; }
+      .platform-card { min-height: 128px; }
+      .statusbar { padding-top: 6px; }
     }
   </style>
 </head>
 <body>
   <header id="toolbar">
-    <div class="cluster" aria-label="Навигация">
-      <button class="tb-btn" id="backBtn" title="Назад (Alt+←)" aria-label="Назад">
+    <div class="tb-cluster" aria-label="Навигация">
+      <button class="icon-btn" id="backBtn" title="Назад (Alt+←)" aria-label="Назад">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
-      <button class="tb-btn" id="reloadBtn" title="Обновить (Ctrl+R)" aria-label="Обновить">
+      <button class="icon-btn" id="reloadBtn" title="Обновить (Ctrl+R)" aria-label="Обновить">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 5v6h-6"/></svg>
       </button>
-    </div>
-
-    <div class="cluster presets">
-      <button class="preset yt" data-url="https://youtube.com" title="Открыть YouTube"><span class="plus">+</span> YouTube</button>
-      <button class="preset tw" data-url="https://twitch.tv" title="Открыть Twitch"><span class="plus">+</span> Twitch</button>
+      <span class="tb-divider" aria-hidden="true"></span>
+      <div class="platform-dock" role="group" aria-label="Платформы">
+        <span class="dock-glider" id="dockGlider" aria-hidden="true"></span>
+        <button class="dock-btn" data-site="yt" data-url="https://youtube.com" title="Открыть YouTube" aria-label="Открыть YouTube">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.25 5 12 5 12 5s-6.25 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.76 1.77C5.75 19 12 19 12 19s6.25 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.2V8.8l5.2 3.2-5.2 3.2Z"/></svg>
+        </button>
+        <button class="dock-btn" data-site="tw" data-url="https://twitch.tv" title="Открыть Twitch" aria-label="Открыть Twitch">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.3 3 3 6.4v13.3h4.5V22h2.6l2.3-2.3h3.9L21 15V3H4.3Zm14.9 11-2.8 2.8h-4.3l-2.3 2.2v-2.2H6.2V4.8h13v9.2ZM16.2 8v5h-1.8V8h1.8Zm-4.7 0v5H9.7V8h1.8Z"/></svg>
+        </button>
+      </div>
     </div>
 
     <form class="address" id="addressForm" autocomplete="off">
-      <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       <input id="addressInput" type="text" inputmode="url" spellcheck="false"
              placeholder="URL или поиск — Enter" aria-label="Адресная строка" />
+      <span class="spinner" aria-hidden="true"></span>
     </form>
 
-    <div class="tabs" id="tabs" role="tablist" aria-label="Вкладки"></div>
+    <div class="tab-area">
+      <div class="tabs" id="tabs" role="tablist" aria-label="Вкладки" data-empty="true">
+        <span class="tab-glider" id="tabGlider" aria-hidden="true"></span>
+      </div>
+    </div>
 
-    <div class="cluster actions">
-      <button class="tb-btn ext" id="extBtn" title="Папка расширений (распакованные Chrome/Edge расширения)" aria-label="Папка расширений">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 7.9c-.05.32.06.65.29.88l1.57 1.57c.47.47.71 1.09.71 1.7s-.24 1.24-.71 1.71l-1.61 1.61a.98.98 0 0 1-.84.28c-.47-.07-.8-.48-.97-.93a2.5 2.5 0 1 0-3.21 3.22c.45.16.86.5.93.97a.98.98 0 0 1-.28.84l-1.61 1.61a2.4 2.4 0 0 1-1.7.71 2.4 2.4 0 0 1-1.71-.71l-1.57-1.57a1.03 1.03 0 0 0-.88-.29c-.49.07-.84.5-1.02.97a2.5 2.5 0 1 1-3.24-3.24c.46-.18.89-.53.97-1.02a1.03 1.03 0 0 0-.29-.88L2.7 13.7A2.4 2.4 0 0 1 2 12c0-.62.24-1.23.71-1.7l1.53-1.53c.24-.24.58-.35.92-.3.51.08.87.53 1.07 1.01a2.5 2.5 0 1 0 3.26-3.26c-.48-.2-.93-.56-1.01-1.07a1.03 1.03 0 0 1 .3-.92l1.52-1.52A2.4 2.4 0 0 1 12 2c.62 0 1.23.24 1.7.71l1.57 1.57c.23.23.56.34.88.29.49-.07.84-.5 1.02-.97a2.5 2.5 0 1 1 3.24 3.24c-.46.18-.89.53-.97 1.02Z"/></svg>
-      </button>
-      <button class="tb-btn token" id="tokenBtn" title="Вставить auth-token Twitch из обычного браузера" aria-label="Войти по токену Twitch">
+    <div class="tb-cluster tb-actions">
+      <span class="hib-dot" id="hibDot" title="Нет активной вкладки" aria-label="Состояние гибернации"></span>
+      <button class="icon-btn" id="tokenBtn" title="Сессия Twitch: импорт auth-token" aria-label="Сессия Twitch">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="16.5" r="3.5"/><path d="M10 14 20 4"/><path d="M16 4l4 4"/><path d="M14 6l4 4"/></svg>
       </button>
-      <button class="tb-btn" id="sleepBtn" title="Усыпить вкладку (выгрузить из RAM)" aria-label="Сон вкладки">
+      <button class="icon-btn" id="settingsBtn" title="Настройки (Ctrl+,)" aria-label="Настройки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.38.36.72.66 1 .3.26.68.4 1.1.4H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
+      </button>
+      <button class="icon-btn" id="sleepBtn" title="Усыпить вкладку" aria-label="Сон вкладки">
         <svg id="sleepIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
       </button>
-      <button class="tb-btn" id="compactBtn" title="Компактный плеер (Ctrl+H)" aria-label="Компактный плеер">
+      <button class="icon-btn" id="compactBtn" title="Компактный плеер (Ctrl+H)" aria-label="Компактный плеер">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M3 16v5h5"/></svg>
       </button>
-      <button class="tb-btn" id="pinBtn" title="Поверх всех окон" aria-label="Поверх всех окон">
+      <button class="icon-btn" id="pinBtn" title="Поверх всех окон" aria-label="Поверх всех окон">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/><path d="M12 15v6"/></svg>
       </button>
     </div>
-
-    <form class="import-bar" id="importForm" autocomplete="off" hidden>
-      <svg class="import-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="16.5" r="3.5"/><path d="M10 14 20 4"/><path d="M16 4l4 4"/><path d="M14 6l4 4"/></svg>
-      <label class="import-label" for="importInput">Twitch auth-token</label>
-      <input id="importInput" type="text" spellcheck="false" autocomplete="off"
-             placeholder="auth-token=... или значение токена; можно вставить строку cookie целиком" />
-      <button class="import-submit" id="importSubmit" type="submit">Войти</button>
-      <button class="tb-btn" id="importCancel" type="button" title="Отмена (Esc)" aria-label="Отмена">×</button>
-    </form>
   </header>
 
   <main id="stage">
-    <section class="home" id="welcome">
-      <header class="hero">
+    <section class="home" id="homeView">
+      <header class="home-head">
         <div class="brand">
-          <div class="logo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2.5" y="4" width="19" height="13" rx="2.6"/>
               <path d="M10 8.1v5.8l5-2.9-5-2.9Z" fill="currentColor" stroke="none"/>
               <path d="M8.5 21h7"/><path d="M12 17v4"/>
             </svg>
           </div>
           <div>
-            <h1>Lite Stream <span>Browser</span></h1>
-            <p class="tagline">Тяжёлый стриминг — лёгкая оболочка на Tauri v2</p>
+            <h1>Lite Stream</h1>
+            <p>Один WebView · общий профиль · экономия RAM</p>
           </div>
         </div>
-        <div class="status-badge" id="statusBadge">
-          <span class="status-dot"></span>
-          <span>Профиль активен</span>
-          <span class="sep">•</span>
-          <span>Экономия RAM</span>
-          <span class="sep">•</span>
-          <span>Расширений: <b id="extCount">0</b></span>
+        <div class="head-right">
+          <span class="session-pill"><span class="dot" aria-hidden="true"></span>Профиль постоянный</span>
+          <button class="icon-btn" id="homeSettingsBtn" title="Настройки" aria-label="Открыть настройки">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.38.36.72.66 1 .3.26.68.4 1.1.4H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
+          </button>
         </div>
       </header>
 
-      <form class="spotlight" id="homeSearch" autocomplete="off">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>
-        </svg>
-        <input id="homeSearchInput" type="text" inputmode="url" spellcheck="false"
-               placeholder="Вставьте ссылку или введите запрос — Enter откроет новую вкладку"
-               aria-label="Быстрый переход или поиск" />
-        <button type="submit">Открыть</button>
+      <form class="command" id="commandForm" autocomplete="off">
+        <div class="command-bar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>
+          </svg>
+          <input id="commandInput" type="text" inputmode="url" spellcheck="false"
+                 placeholder="Ссылка YouTube / Twitch, @канал или имя канала"
+                 aria-label="Быстрый запуск: ссылка или канал" autofocus />
+          <span class="detect-badge" id="detectBadge" data-kind="idle" aria-live="polite">ожидание</span>
+          <button class="command-go" type="submit" title="Открыть (Enter)">
+            Открыть
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="command-hints">
+          <span>Ссылка или канал</span>
+          <span class="hint-sep">/</span>
+          <span>twitch.tv/name</span>
+          <span class="hint-sep">/</span>
+          <span>@youtube</span>
+          <span class="hint-sep hint-optional">/</span>
+          <span class="hint-optional">имя канала → Twitch</span>
+          <span class="hint-right"><kbd>Ctrl</kbd><kbd>L</kbd> адрес</span>
+        </div>
       </form>
 
       <div class="launch-grid">
-        <button class="launch yt" data-url="https://youtube.com" title="Открыть YouTube">
-          <span class="launch-icon">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.25 5 12 5 12 5s-6.25 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.76 1.77C5.75 19 12 19 12 19s6.25 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.2V8.8l5.2 3.2-5.2 3.2Z"/></svg>
-          </span>
-          <h3>YouTube</h3>
-          <p>Подписки, история и рекомендации — в одном профиле</p>
-          <span class="go">Открыть youtube.com
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
-          </span>
-        </button>
-
-        <button class="launch tw" data-url="https://twitch.tv" title="Открыть Twitch">
-          <span class="launch-icon">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.3 3 3 6.4v13.3h4.5V22h2.6l2.3-2.3h3.9L21 15V3H4.3Zm14.9 11-2.8 2.8h-4.3l-2.3 2.2v-2.2H6.2V4.8h13v9.2ZM16.2 8v5h-1.8V8h1.8Zm-4.7 0v5H9.7V8h1.8Z"/></svg>
-          </span>
-          <h3>Twitch</h3>
-          <p>Стримы, чат и подписки — с быстрым входом по токену</p>
-          <span class="go">Открыть twitch.tv
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
-          </span>
-        </button>
-      </div>
-
-      <div class="grid-two">
-        <section class="panel favorites">
-          <div class="panel-head">
-            <h2>Быстрые каналы</h2>
-            <div class="panel-tools">
-              <span class="sub" id="favCount"></span>
-              <button class="mini-btn" id="addFavBtn" type="button" title="Добавить канал или ссылку">+ Добавить</button>
-            </div>
+        <button class="platform-card yt" data-site="yt" data-url="https://youtube.com" title="Открыть YouTube">
+          <span class="spotlight" aria-hidden="true"></span>
+          <div class="pc-head">
+            <span class="pc-logo">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.25 5 12 5 12 5s-6.25 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.76 1.77C5.75 19 12 19 12 19s6.25 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.2V8.8l5.2 3.2-5.2 3.2Z"/></svg>
+            </span>
+            <span class="pc-state" data-state="saved"><i class="dot"></i><span data-state-label>Сессия общая</span></span>
           </div>
+          <div class="pc-body">
+            <h2>YouTube</h2>
+            <p>Подписки, история и рекомендации в общем профиле</p>
+          </div>
+          <div class="pc-foot">
+            <span class="pc-open">Открыть youtube.com
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+            </span>
+          </div>
+        </button>
 
-          <form class="fav-form" id="favForm" autocomplete="off" hidden>
-            <input id="favName" type="text" maxlength="60" placeholder="Название (например, xQc)" />
-            <input id="favUrl" type="text" spellcheck="false" placeholder="twitch.tv/xqc или ссылка" />
-            <button class="mini-btn primary" type="submit">Сохранить</button>
-            <button class="mini-btn" id="favCancel" type="button">Отмена</button>
-          </form>
+        <button class="platform-card tw" data-site="tw" data-url="https://twitch.tv" title="Открыть Twitch">
+          <span class="spotlight" aria-hidden="true"></span>
+          <div class="pc-head">
+            <span class="pc-logo">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.3 3 3 6.4v13.3h4.5V22h2.6l2.3-2.3h3.9L21 15V3H4.3Zm14.9 11-2.8 2.8h-4.3l-2.3 2.2v-2.2H6.2V4.8h13v9.2ZM16.2 8v5h-1.8V8h1.8Zm-4.7 0v5H9.7V8h1.8Z"/></svg>
+            </span>
+            <span class="pc-state" data-state="saved"><i class="dot"></i><span data-state-label>Сессия общая</span></span>
+          </div>
+          <div class="pc-body">
+            <h2>Twitch</h2>
+            <p>Стримы и чат — с быстрым входом по auth-token</p>
+          </div>
+          <div class="pc-foot">
+            <span class="pc-open">Открыть twitch.tv
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+            </span>
+          </div>
+        </button>
+      </div>
 
-          <div class="fav-list" id="favList"></div>
-          <p class="fav-empty" id="favEmpty">Добавьте любимый Twitch-канал или YouTube-ссылку — карточка появится здесь и будет открываться в один клик. Список хранится локально.</p>
-        </section>
-
-        <div class="stack">
-          <section class="panel extensions">
-            <div class="panel-head">
-              <h2>Расширения</h2>
-              <span class="chip" id="extPanelCount">0</span>
-            </div>
-            <div class="ext-list" id="extList"></div>
-            <p class="ext-note">Распакованные <b>uBlock Origin</b>, <b>7TV</b> и <b>SponsorBlock</b> положите в папку расширений — они подключатся к профилю при следующей вкладке.</p>
-            <button class="open-ext" id="openExtBtn" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
-              Открыть папку расширений
+      <section class="panel" aria-labelledby="resumeTitle">
+        <div class="panel-head">
+          <div class="panel-title">
+            <h2 id="resumeTitle">Быстрый возврат</h2>
+            <p>Недавние и избранные каналы</p>
+          </div>
+          <div class="panel-tools">
+            <span class="count-chip" id="resumeCount" title="Всего сохранённых">0</span>
+            <button class="ghost-btn" id="resumeToggle" type="button" hidden>Все</button>
+            <button class="ghost-btn primary" id="addFavBtn" type="button" title="Добавить канал или ссылку">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              Канал
             </button>
-          </section>
-
-          <section class="panel shortcuts">
-            <div class="panel-head"><h2>Горячие клавиши</h2></div>
-            <div class="cheats">
-              <div class="cheat"><span class="keys"><kbd>Ctrl</kbd><kbd>H</kbd></span> компактный плеер — панель скрывается</div>
-              <div class="cheat"><span class="keys"><span class="z">zZ</span></span> метка спящей вкладки: рендерер выгружен из RAM</div>
-              <div class="cheat"><span class="keys"><kbd>Ctrl</kbd><kbd>L</kbd></span> фокус в адресную строку</div>
-              <div class="cheat"><span class="keys"><kbd>Ctrl</kbd><kbd>R</kbd></span> перезагрузить активную вкладку</div>
-              <div class="cheat"><span class="keys"><kbd>🔑</kbd></span> импорт Twitch auth-token из обычного браузера</div>
-            </div>
-          </section>
+          </div>
         </div>
-      </div>
 
-      <div class="foot">
-        <span>Профиль: <code id="profilePath">…</code></span>
-        <span>Расширения: <code id="extensionsPath">…</code></span>
-      </div>
+        <form class="fav-form" id="favForm" autocomplete="off" hidden>
+          <input id="favName" type="text" maxlength="60" placeholder="Название (например, xQc)" aria-label="Название канала" />
+          <input id="favUrl" type="text" spellcheck="false" placeholder="twitch.tv/xqc или ссылка" aria-label="Ссылка канала" />
+          <button class="ghost-btn primary" type="submit">Сохранить</button>
+          <button class="ghost-btn" id="favCancel" type="button">Отмена</button>
+        </form>
+
+        <div class="resume-grid" id="resumeGrid"></div>
+        <p class="resume-empty" id="resumeEmpty">
+          Добавьте Twitch-канал или YouTube-ссылку — карточки появятся здесь. Недавние
+          вкладки запоминаются автоматически.
+        </p>
+      </section>
+
+      <footer class="statusbar">
+        <div class="metrics" aria-label="Состояние системы">
+          <span class="metric ram"><span class="label">RAM</span><b id="ramMetric">—</b></span>
+          <span class="metric cpu"><span class="label">CPU</span><b id="cpuMetric">—</b></span>
+          <span class="metric"><span class="label">Proc</span><b id="procMetric">—</b></span>
+          <span class="metric"><span class="label">Ext</span><b id="extMetric">0</b></span>
+          <span class="metric"><span class="label">Profile</span><b>persistent</b></span>
+        </div>
+        <div class="status-keys">
+          <span class="key-hint"><kbd>Ctrl</kbd><kbd>H</kbd> compact</span>
+          <span class="key-hint"><kbd>Ctrl</kbd><kbd>Tab</kbd> switch</span>
+          <span class="key-hint"><kbd>Ctrl</kbd><kbd>L</kbd> address</span>
+        </div>
+      </footer>
     </section>
 
-    <section class="sleeping" id="sleeping" hidden>
+    <section class="sleeping" id="sleepingView" hidden>
       <div class="sleep-card">
-        <div class="sleep-icon">
+        <div class="sleep-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
         </div>
-        <div class="sleep-kicker">Вкладка спит</div>
+        <div class="sleep-kicker">Вкладка спит · renderer unloaded</div>
         <h2 id="sleepTitle">Вкладка выгружена</h2>
         <div class="sleep-url" id="sleepUrl"></div>
         <p class="sleep-note">
           Процесс рендеринга закрыт и больше не занимает RAM. URL и заголовок сохранены —
-          при пробуждении страница откроется снова с той же авторизацией и рекомендациями.
+          при пробуждении страница откроется с той же авторизацией и рекомендациями.
         </p>
         <div class="sleep-actions">
-          <button class="primary-btn" id="wakeBtn">Разбудить вкладку</button>
-          <button class="ghost-btn" id="closeSleepBtn">Закрыть вкладку</button>
+          <button class="btn-primary" id="wakeBtn">Разбудить вкладку</button>
+          <button class="btn-ghost" id="closeSleepBtn">Закрыть вкладку</button>
         </div>
       </div>
     </section>
   </main>
 
-  <button class="show-panel" id="showPanel" title="Показать верхнюю панель">⌃ Панель <span class="ime">Ctrl + H</span></button>
+  <button class="show-panel" id="showPanel" title="Показать верхнюю панель">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M3 16v5h5"/></svg>
+    Панель
+    <kbd>Ctrl</kbd><kbd>H</kbd>
+  </button>
+  <div class="overlay" id="settingsOverlay" hidden>
+    <section class="settings" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <header class="settings-head">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2.6"/><path d="M10 8.1v5.8l5-2.9-5-2.9Z" fill="currentColor" stroke="none"/><path d="M8.5 21h7"/><path d="M12 17v4"/></svg>
+          </div>
+          <div>
+            <h2 id="settingsTitle">Настройки</h2>
+            <p>Профиль WebView2, сессия Twitch и поведение вкладок</p>
+          </div>
+        </div>
+        <button class="icon-btn" id="settingsClose" title="Закрыть (Esc)" aria-label="Закрыть настройки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <section class="set-card" id="setToken" aria-labelledby="setTokenTitle">
+          <div class="set-card-head">
+            <div class="set-card-title">
+              <h3 id="setTokenTitle">Twitch · сессия</h3>
+              <span class="set-badge" id="tokenBadge">не задан</span>
+            </div>
+          </div>
+          <form class="token-form" id="tokenForm" autocomplete="off">
+            <div class="token-field">
+              <input id="tokenInput" type="password" spellcheck="false" autocomplete="off"
+                     placeholder="auth-token=… или значение токена" aria-label="Twitch auth-token" />
+              <button class="token-eye" id="tokenEye" type="button" title="Показать токен" aria-label="Показать токен">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+              </button>
+            </div>
+            <button class="btn-primary token-submit" id="tokenSubmit" type="submit">Импорт</button>
+          </form>
+          <div class="cookie-chips" id="tokenChips" aria-label="Cookie сессии"></div>
+          <div class="session-status" id="tokenStatus">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="tokenStatusText">Токен не импортирован</span>
+          </div>
+          <p class="set-note">
+            Вставьте <b>auth-token</b> или строку cookie целиком. Значение не сохраняется
+            в интерфейсе — cookie сразу уходят в постоянный профиль WebView2.
+          </p>
+        </section>
+
+        <section class="set-card" aria-labelledby="setExtTitle">
+          <div class="set-card-head">
+            <div class="set-card-title">
+              <h3 id="setExtTitle">WebView2 · расширения</h3>
+              <span class="set-badge" id="extBadge">0</span>
+            </div>
+            <button class="ghost-btn" id="extRefreshBtn" type="button" title="Перечитать папку расширений">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 5v6h-6"/></svg>
+              Обновить
+            </button>
+          </div>
+          <div class="ext-list" id="extList"></div>
+          <button class="ghost-btn ext-open" id="openExtBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+            Открыть папку расширений
+          </button>
+          <p class="set-note">
+            Поддерживаются только распакованные папки с <b>manifest.json</b>. Новые
+            расширения подключаются при создании следующей вкладки.
+          </p>
+        </section>
+
+        <section class="set-card" aria-labelledby="setHibTitle">
+          <div class="set-card-head">
+            <div class="set-card-title"><h3 id="setHibTitle">Гибернация и профиль</h3></div>
+          </div>
+          <div class="pref-list">
+            <div class="pref-row">
+              <div class="pref-copy">
+                <b>Авто-гибернация фоновых вкладок</b>
+                <small>Ядро архитектуры: в памяти живёт только один дочерний WebView.</small>
+              </div>
+              <div class="pref-right">
+                <span class="set-badge core">всегда</span>
+                <label class="switch" title="Отключение нарушило бы гарантию одного WebView">
+                  <input type="checkbox" checked disabled aria-label="Авто-гибернация всегда включена" />
+                  <span class="track"><span class="knob"></span></span>
+                </label>
+              </div>
+            </div>
+            <div class="pref-row">
+              <div class="pref-copy">
+                <b>Постоянный профиль сессии</b>
+                <small>Cookies и localStorage общие для всех вкладок и переживают перезапуск.</small>
+              </div>
+              <div class="pref-right">
+                <span class="set-badge core">всегда</span>
+                <label class="switch" title="Профиль задаётся в Rust при старте приложения">
+                  <input type="checkbox" checked disabled aria-label="Постоянный профиль всегда включён" />
+                  <span class="track"><span class="knob"></span></span>
+                </label>
+              </div>
+            </div>
+            <div class="pref-row">
+              <div class="pref-copy">
+                <b>Компактный режим при запуске</b>
+                <small>Скрывать панель сразу после старта. Ctrl+H переключает вручную.</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="prefCompact" aria-label="Компактный режим при запуске" />
+                <span class="track"><span class="knob"></span></span>
+              </label>
+            </div>
+            <div class="pref-row">
+              <div class="pref-copy">
+                <b>Уменьшить анимации</b>
+                <small>Отключает переходы и подсветку курсора в интерфейсе.</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="prefMotion" aria-label="Уменьшить анимации" />
+                <span class="track"><span class="knob"></span></span>
+              </label>
+            </div>
+            <div class="pref-row">
+              <div class="pref-copy">
+                <b>Активная вкладка</b>
+                <small>Выгрузить renderer из RAM, сохранив URL и заголовок.</small>
+              </div>
+              <button class="ghost-btn" id="hibernateNowBtn" type="button">Выгрузить</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="set-card" aria-labelledby="setPathsTitle">
+          <div class="set-card-head">
+            <div class="set-card-title"><h3 id="setPathsTitle">Пути профиля</h3></div>
+          </div>
+          <div class="path-row">
+            <span class="label">Browser profile</span>
+            <code id="profilePath">…</code>
+          </div>
+          <div class="path-row">
+            <span class="label">Extensions</span>
+            <code id="extensionsPath">…</code>
+          </div>
+        </section>
+      </div>
+
+      <footer class="settings-foot">
+        <span>Профиль и сессии применяются сразу</span>
+        <button class="btn-ghost" id="settingsDone" type="button">Готово</button>
+      </footer>
+    </section>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
@@ -1340,50 +1539,80 @@
       const listen = tauri?.event?.listen;
 
       const el = {
-        toolbar: document.getElementById("toolbar"),
         back: document.getElementById("backBtn"),
         reload: document.getElementById("reloadBtn"),
         addressForm: document.getElementById("addressForm"),
         address: document.getElementById("addressInput"),
         tabs: document.getElementById("tabs"),
+        tabGlider: document.getElementById("tabGlider"),
+        dockGlider: document.getElementById("dockGlider"),
+        hibDot: document.getElementById("hibDot"),
+        tokenBtn: document.getElementById("tokenBtn"),
+        settingsBtn: document.getElementById("settingsBtn"),
         sleep: document.getElementById("sleepBtn"),
         sleepIcon: document.getElementById("sleepIcon"),
         compact: document.getElementById("compactBtn"),
         pin: document.getElementById("pinBtn"),
-        tokenBtn: document.getElementById("tokenBtn"),
-        importForm: document.getElementById("importForm"),
-        importInput: document.getElementById("importInput"),
-        importSubmit: document.getElementById("importSubmit"),
-        importCancel: document.getElementById("importCancel"),
-        welcome: document.getElementById("welcome"),
-        sleeping: document.getElementById("sleeping"),
+        homeView: document.getElementById("homeView"),
+        commandForm: document.getElementById("commandForm"),
+        commandInput: document.getElementById("commandInput"),
+        detectBadge: document.getElementById("detectBadge"),
+        homeSettingsBtn: document.getElementById("homeSettingsBtn"),
+        resumeGrid: document.getElementById("resumeGrid"),
+        resumeEmpty: document.getElementById("resumeEmpty"),
+        resumeCount: document.getElementById("resumeCount"),
+        resumeToggle: document.getElementById("resumeToggle"),
+        addFavBtn: document.getElementById("addFavBtn"),
+        favForm: document.getElementById("favForm"),
+        favName: document.getElementById("favName"),
+        favUrl: document.getElementById("favUrl"),
+        favCancel: document.getElementById("favCancel"),
+        ramMetric: document.getElementById("ramMetric"),
+        cpuMetric: document.getElementById("cpuMetric"),
+        procMetric: document.getElementById("procMetric"),
+        extMetric: document.getElementById("extMetric"),
+        sleepingView: document.getElementById("sleepingView"),
         sleepTitle: document.getElementById("sleepTitle"),
         sleepUrl: document.getElementById("sleepUrl"),
         wake: document.getElementById("wakeBtn"),
         closeSleep: document.getElementById("closeSleepBtn"),
-        profile: document.getElementById("profilePath"),
-        extensionsPath: document.getElementById("extensionsPath"),
         showPanel: document.getElementById("showPanel"),
-        toast: document.getElementById("toast"),
-        extBtn: document.getElementById("extBtn"),
+        settingsOverlay: document.getElementById("settingsOverlay"),
+        settingsClose: document.getElementById("settingsClose"),
+        settingsDone: document.getElementById("settingsDone"),
+        tokenForm: document.getElementById("tokenForm"),
+        tokenInput: document.getElementById("tokenInput"),
+        tokenEye: document.getElementById("tokenEye"),
+        tokenSubmit: document.getElementById("tokenSubmit"),
+        tokenChips: document.getElementById("tokenChips"),
+        tokenStatus: document.getElementById("tokenStatus"),
+        tokenStatusText: document.getElementById("tokenStatusText"),
+        tokenBadge: document.getElementById("tokenBadge"),
         extList: document.getElementById("extList"),
-        extCount: document.getElementById("extCount"),
-        extPanelCount: document.getElementById("extPanelCount"),
+        extBadge: document.getElementById("extBadge"),
+        extRefreshBtn: document.getElementById("extRefreshBtn"),
         openExtBtn: document.getElementById("openExtBtn"),
-        homeSearch: document.getElementById("homeSearch"),
-        homeSearchInput: document.getElementById("homeSearchInput"),
-        favForm: document.getElementById("favForm"),
-        favName: document.getElementById("favName"),
-        favUrl: document.getElementById("favUrl"),
-        favList: document.getElementById("favList"),
-        favEmpty: document.getElementById("favEmpty"),
-        favCount: document.getElementById("favCount"),
-        addFavBtn: document.getElementById("addFavBtn"),
-        favCancel: document.getElementById("favCancel"),
+        prefCompact: document.getElementById("prefCompact"),
+        prefMotion: document.getElementById("prefMotion"),
+        hibernateNowBtn: document.getElementById("hibernateNowBtn"),
+        profilePath: document.getElementById("profilePath"),
+        extensionsPath: document.getElementById("extensionsPath"),
+        toast: document.getElementById("toast"),
       };
 
       const MOON = '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>';
       const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+      const ICONS = {
+        yt: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.25 5 12 5 12 5s-6.25 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.76 1.77C5.75 19 12 19 12 19s6.25 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.2V8.8l5.2 3.2-5.2 3.2Z"/></svg>',
+        tw: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.3 3 3 6.4v13.3h4.5V22h2.6l2.3-2.3h3.9L21 15V3H4.3Zm14.9 11-2.8 2.8h-4.3l-2.3 2.2v-2.2H6.2V4.8h13v9.2ZM16.2 8v5h-1.8V8h1.8Zm-4.7 0v5H9.7V8h1.8Z"/></svg>',
+        other: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>',
+      };
+
+      const FAVORITES_KEY = "lite-stream.favorites.v1";
+      const RECENTS_KEY = "lite-stream.recent.v1";
+      const PREFS_KEY = "lite-stream.prefs.v1";
+      const TWITCH_SESSION_KEY = "lite-stream.twitch.session.v1";
+      const COOKIE_NAMES = ["auth-token", "twilight-user", "persistent"];
 
       let state = {
         tabs: [],
@@ -1393,24 +1622,133 @@
         profilePath: "",
         extensionsPath: "",
       };
-      let toastTimer = 0;
-
-      const FAVORITES_KEY = "lite-stream.favorites.v1";
       let favorites = [];
+      let recents = [];
       let extensions = [];
+      let prefs = { compactOnStart: false, reduceMotion: false };
+      let twitchSession = null;
+      let resumeExpanded = false;
+      let settingsOpen = false;
+      let hiddenWebview = false;
+      let toastTimer = 0;
+      let busyTimer = 0;
+      let metricsBusy = false;
 
       const activeTab = () => state.tabs.find((tab) => tab.id === state.activeId) || null;
 
+      function readJson(key, fallback) {
+        try {
+          const raw = window.localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : fallback;
+        } catch (_) {
+          return fallback;
+        }
+      }
+
+      function writeJson(key, value) {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(value));
+        } catch (_) {
+          /* storage may be unavailable */
+        }
+      }
+
       function siteClass(url) {
         try {
-          const host = new URL(url).hostname.replace(/^www\./, "");
-          if (host.endsWith("youtube.com") || host.endsWith("youtu.be")) return "yt";
-          if (host.endsWith("twitch.tv")) return "tw";
-        } catch (_) { /* ignore */ }
+          const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+          if (host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com")) {
+            return "yt";
+          }
+          if (host === "twitch.tv" || host.endsWith(".twitch.tv")) return "tw";
+        } catch (_) {
+          /* ignore */
+        }
         return "other";
       }
 
-      // ---------------------------------------------------------- favorites
+      function ensureScheme(value) {
+        return /^https?:\/\//i.test(value) ? value : "https://" + value;
+      }
+
+      function normalizeUrlKey(url) {
+        try {
+          const parsed = new URL(url);
+          const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+          const path = parsed.pathname.replace(/\/+$/, "");
+          return (host + path + parsed.search).toLowerCase();
+        } catch (_) {
+          return String(url || "").trim().toLowerCase();
+        }
+      }
+
+      function tabForUrl(url) {
+        const key = normalizeUrlKey(url);
+        return state.tabs.find((tab) => normalizeUrlKey(tab.url) === key) || null;
+      }
+
+      function labelForUrl(url) {
+        try {
+          const parsed = new URL(url);
+          const host = parsed.hostname.replace(/^www\./, "");
+          if (host === "twitch.tv" || host.endsWith(".twitch.tv")) {
+            const segment = parsed.pathname.split("/").filter(Boolean)[0];
+            return segment ? segment : "Twitch";
+          }
+          if (host === "youtu.be") {
+            return "YouTube · " + (parsed.pathname.slice(1) || "видео");
+          }
+          if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+            if (parsed.pathname === "/watch") return "YouTube · видео";
+            const segment = parsed.pathname.split("/").filter(Boolean)[0];
+            return segment ? "YouTube · " + segment : "YouTube";
+          }
+          return host || url;
+        } catch (_) {
+          return url;
+        }
+      }
+
+      function detectTarget(raw) {
+        const value = String(raw || "").trim();
+        if (!value) return { kind: "idle", label: "ожидание", url: null };
+
+        const hasScheme = /^https?:\/\//i.test(value);
+        let host = "";
+        try {
+          host = new URL(hasScheme ? value : "https://" + value).hostname
+            .replace(/^www\./, "")
+            .toLowerCase();
+        } catch (_) {
+          host = "";
+        }
+
+        const url = hasScheme ? value : "https://" + value;
+        if (host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com")) {
+          return { kind: "yt", label: "YouTube", url };
+        }
+        if (host === "twitch.tv" || host.endsWith(".twitch.tv")) {
+          return { kind: "tw", label: "Twitch", url };
+        }
+        if (/^@[\w.-]+$/.test(value)) {
+          return { kind: "yt", label: "YouTube · канал", url: "https://www.youtube.com/" + value };
+        }
+        if (/^[\w.-]+$/.test(value) && !value.includes(".")) {
+          return { kind: "tw", label: "Twitch · канал", url: "https://www.twitch.tv/" + value };
+        }
+        if (value.includes(".") && !/\s/.test(value)) {
+          return { kind: "link", label: "URL", url };
+        }
+        return { kind: "search", label: "Поиск", url: value };
+      }
+
+      function relativeTime(at) {
+        if (!at) return "избранное";
+        const diff = Math.max(0, Date.now() - at);
+        if (diff < 60e3) return "сейчас";
+        if (diff < 3600e3) return Math.floor(diff / 60e3) + " мин";
+        if (diff < 86400e3) return Math.floor(diff / 3600e3) + " ч";
+        return Math.floor(diff / 86400e3) + " дн";
+      }
 
       function favoriteUrl(input) {
         const value = String(input || "").trim();
@@ -1423,38 +1761,156 @@
       }
 
       function loadFavorites() {
-        try {
-          const raw = window.localStorage.getItem(FAVORITES_KEY);
-          const parsed = raw ? JSON.parse(raw) : [];
-          favorites = Array.isArray(parsed)
-            ? parsed
-                .filter((item) => item && typeof item.url === "string")
-                .map((item) => ({
-                  id: String(item.id || ""),
-                  name: String(item.name || "").slice(0, 60),
-                  url: String(item.url),
-                }))
-                .filter((item) => item.id)
-            : [];
-        } catch (_) {
-          favorites = [];
-        }
+        const parsed = readJson(FAVORITES_KEY, []);
+        favorites = Array.isArray(parsed)
+          ? parsed
+              .filter((item) => item && typeof item.url === "string")
+              .map((item) => ({
+                id: String(item.id || ""),
+                name: String(item.name || "").slice(0, 60),
+                url: String(item.url),
+                at: Number(item.at) || 0,
+              }))
+              .filter((item) => item.id)
+          : [];
       }
 
       function saveFavorites() {
-        try {
-          window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-        } catch (_) { /* storage may be unavailable */ }
+        writeJson(FAVORITES_KEY, favorites);
       }
 
-      function favoriteLabel(favorite) {
-        if (favorite.name) return favorite.name;
-        try {
-          const parsed = new URL(favorite.url);
-          const path = parsed.pathname.replace(/\/+$/, "");
-          return parsed.hostname.replace(/^www\./, "") + path;
-        } catch (_) {
-          return favorite.url;
+      function loadRecents() {
+        const parsed = readJson(RECENTS_KEY, []);
+        recents = Array.isArray(parsed)
+          ? parsed
+              .filter((item) => item && typeof item.url === "string")
+              .map((item) => ({
+                id: String(item.id || ""),
+                name: String(item.name || "").slice(0, 80),
+                url: String(item.url),
+                at: Number(item.at) || 0,
+              }))
+              .filter((item) => item.id)
+          : [];
+      }
+
+      function saveRecents() {
+        writeJson(RECENTS_KEY, recents);
+      }
+
+      function rememberRecent(name, url) {
+        const key = normalizeUrlKey(url);
+        recents = recents.filter((item) => normalizeUrlKey(item.url) !== key);
+        recents.unshift({
+          id: "r-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          name: (name || labelForUrl(url)).slice(0, 80),
+          url,
+          at: Date.now(),
+        });
+        recents = recents.slice(0, 12);
+        saveRecents();
+      }
+
+      function resumeStatus(item) {
+        const tab = tabForUrl(item.url);
+        if (tab) {
+          if (tab.id === state.activeId && !tab.sleeping) {
+            return { label: "активна", cls: "active" };
+          }
+          return { label: tab.sleeping ? "спящая" : "готова", cls: "hibernated" };
+        }
+        return { label: "сессия", cls: "saved" };
+      }
+
+      function resumeItems() {
+        const seen = new Set();
+        const list = [];
+        const add = (item, kind) => {
+          if (!item || !item.url) return;
+          const key = normalizeUrlKey(item.url);
+          if (seen.has(key)) return;
+          seen.add(key);
+          list.push({ ...item, kind, site: siteClass(item.url) });
+        };
+        favorites.forEach((item) => add(item, "favorite"));
+        recents.forEach((item) => add(item, "recent"));
+        return list;
+      }
+
+      function removeResume(id, kind) {
+        if (kind === "favorite") {
+          favorites = favorites.filter((item) => item.id !== id);
+          saveFavorites();
+        } else {
+          recents = recents.filter((item) => item.id !== id);
+          saveRecents();
+        }
+        renderResume();
+      }
+
+      function renderResume() {
+        const items = resumeItems();
+        const view = resumeExpanded ? items : items.slice(0, 4);
+        const fragment = document.createDocumentFragment();
+
+        for (const item of view) {
+          const status = resumeStatus(item);
+          const card = document.createElement("div");
+          card.className = "resume-card " + item.site;
+          card.dataset.url = item.url;
+          card.dataset.id = item.id;
+          card.dataset.kind = item.kind;
+          card.setAttribute("role", "button");
+          card.tabIndex = 0;
+          card.title = item.url;
+
+          const logo = document.createElement("span");
+          logo.className = "resume-logo";
+          logo.innerHTML = ICONS[item.site] || ICONS.other;
+
+          const copy = document.createElement("span");
+          copy.className = "resume-copy";
+          const name = document.createElement("span");
+          name.className = "resume-name";
+          name.textContent = item.name || labelForUrl(item.url);
+          const meta = document.createElement("span");
+          meta.className = "resume-meta";
+          const statusNode = document.createElement("span");
+          statusNode.className = "resume-status " + status.cls;
+          const statusDot = document.createElement("i");
+          statusNode.append(statusDot, document.createTextNode(status.label));
+          const time = document.createElement("span");
+          time.className = "resume-time";
+          time.textContent = relativeTime(item.at);
+          meta.append(statusNode, time);
+          copy.append(name, meta);
+
+          const remove = document.createElement("button");
+          remove.className = "resume-del";
+          remove.type = "button";
+          remove.dataset.remove = item.id;
+          remove.title = "Убрать из быстрого возврата";
+          remove.setAttribute("aria-label", "Убрать " + (item.name || labelForUrl(item.url)));
+          remove.textContent = "×";
+
+          card.append(logo, copy, remove);
+          fragment.append(card);
+        }
+
+        el.resumeGrid.replaceChildren(fragment);
+        el.resumeEmpty.hidden = items.length > 0;
+        el.resumeCount.textContent = String(items.length);
+        el.resumeToggle.hidden = items.length <= 4;
+        el.resumeToggle.textContent = resumeExpanded ? "Свернуть" : "Все";
+      }
+
+      function showFavForm(show) {
+        el.favForm.hidden = !show;
+        el.addFavBtn.classList.toggle("active", show);
+        if (show) {
+          el.favName.value = "";
+          el.favUrl.value = "";
+          el.favName.focus();
         }
       }
 
@@ -1466,67 +1922,13 @@
           el.favUrl.focus();
           return null;
         }
-        return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, url };
+        return {
+          id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          name,
+          url,
+          at: Date.now(),
+        };
       }
-
-      function showFavoritesForm(show) {
-        el.favForm.hidden = !show;
-        el.addFavBtn.classList.toggle("active", show);
-        if (show) {
-          el.favName.value = "";
-          el.favUrl.value = "";
-          el.favName.focus();
-        }
-      }
-
-      function renderFavorites() {
-        const fragment = document.createDocumentFragment();
-
-        for (const favorite of favorites) {
-          const card = document.createElement("div");
-          card.className = "fav-card " + siteClass(favorite.url);
-          card.dataset.fav = favorite.id;
-          card.setAttribute("role", "button");
-          card.tabIndex = 0;
-          card.title = favorite.url;
-
-          const avatar = document.createElement("span");
-          avatar.className = "fav-avatar";
-          avatar.innerHTML = favorite.url.includes("twitch")
-            ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.3 3 3 6.4v13.3h4.5V22h2.6l2.3-2.3h3.9L21 15V3H4.3Zm14.9 11-2.8 2.8h-4.3l-2.3 2.2v-2.2H6.2V4.8h13v9.2ZM16.2 8v5h-1.8V8h1.8Zm-4.7 0v5H9.7V8h1.8Z"/></svg>'
-            : favorite.url.includes("youtu")
-              ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.25 5 12 5 12 5s-6.25 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.76 1.77C5.75 19 12 19 12 19s6.25 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.2V8.8l5.2 3.2-5.2 3.2Z"/></svg>'
-              : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>';
-
-          const copy = document.createElement("span");
-          copy.className = "fav-copy";
-          const name = document.createElement("span");
-          name.className = "fav-name";
-          name.textContent = favoriteLabel(favorite);
-          const url = document.createElement("span");
-          url.className = "fav-url";
-          url.textContent = favorite.url.replace(/^https?:\/\//, "");
-          copy.append(name, url);
-
-          const remove = document.createElement("button");
-          remove.className = "fav-del";
-          remove.type = "button";
-          remove.dataset.favDelete = favorite.id;
-          remove.title = "Удалить из избранного";
-          remove.setAttribute("aria-label", `Удалить ${favoriteLabel(favorite)} из избранного`);
-          remove.textContent = "×";
-
-          card.append(avatar, copy, remove);
-          fragment.append(card);
-        }
-
-        el.favList.replaceChildren(fragment);
-        el.favEmpty.hidden = favorites.length > 0;
-        el.favCount.textContent = favorites.length ? `${favorites.length} избр.` : "";
-      }
-
-      // --------------------------------------------------------- extensions
-
       const EXT_STATUS_LABELS = {
         active: "включено",
         installed: "установлено",
@@ -1539,8 +1941,9 @@
 
         if (!extensions.length) {
           const empty = document.createElement("div");
-          empty.className = "ext-item empty";
-          empty.textContent = "Пока пусто — положите распакованное расширение в папку и откройте новую вкладку.";
+          empty.className = "ext-empty";
+          empty.textContent =
+            "Пока пусто. Положите распакованное расширение (папку с manifest.json) в папку WebView2.";
           fragment.append(empty);
         }
 
@@ -1562,26 +1965,27 @@
 
           const status = document.createElement("span");
           status.className = "ext-status";
-          status.textContent = EXT_STATUS_LABELS[extension.status] || extension.status || "";
+          status.textContent =
+            EXT_STATUS_LABELS[extension.status] || extension.status || "";
 
           item.append(dot, name, version, status);
           fragment.append(item);
         }
 
         el.extList.replaceChildren(fragment);
-        el.extCount.textContent = String(extensions.length);
-        el.extPanelCount.textContent = String(extensions.length);
+        el.extMetric.textContent = String(extensions.length);
+        el.extBadge.textContent = String(extensions.length);
       }
 
-      async function refreshExtensions() {
+      async function refreshExtensions(notify) {
         if (!invoke) return;
         try {
           const list = await invoke("list_extensions");
           extensions = Array.isArray(list) ? list : [];
-        } catch (_) {
-          extensions = [];
+          renderExtensions();
+        } catch (error) {
+          if (notify) showToast(errorText(error));
         }
-        renderExtensions();
       }
 
       async function openExtensionsFolder() {
@@ -1597,6 +2001,86 @@
         }
       }
 
+      function loadTwitchSession() {
+        const stored = readJson(TWITCH_SESSION_KEY, null);
+        if (stored && typeof stored.at === "number" && Array.isArray(stored.cookies)) {
+          twitchSession = { at: stored.at, cookies: stored.cookies.map(String) };
+        } else {
+          twitchSession = null;
+        }
+      }
+
+      function saveTwitchSession() {
+        if (!twitchSession) return;
+        writeJson(TWITCH_SESSION_KEY, {
+          at: twitchSession.at,
+          cookies: twitchSession.cookies,
+        });
+      }
+
+      function parseCookieNames(raw) {
+        const names = new Set();
+        const value = String(raw || "").trim();
+        if (!value) return [];
+        for (const part of value.split(";")) {
+          const index = part.indexOf("=");
+          if (index <= 0) continue;
+          const name = part.slice(0, index).trim().toLowerCase();
+          if (COOKIE_NAMES.includes(name)) names.add(name);
+        }
+        if (!names.size && !value.includes("=")) names.add("auth-token");
+        return Array.from(names);
+      }
+
+      function formatDate(ms) {
+        try {
+          return new Intl.DateTimeFormat("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(new Date(ms));
+        } catch (_) {
+          return new Date(ms).toLocaleString();
+        }
+      }
+
+      function renderTokenStatus(previewNames) {
+        const names = previewNames || (twitchSession ? twitchSession.cookies : []);
+        const chips = COOKIE_NAMES.map((name) => {
+          const chip = document.createElement("span");
+          chip.className = "cookie-chip" + (names.includes(name) ? " on" : "");
+          chip.textContent = name;
+          return chip;
+        });
+        el.tokenChips.replaceChildren(...chips);
+
+        el.tokenStatus.classList.toggle("ok", !!twitchSession);
+        el.tokenStatusText.textContent = twitchSession
+          ? "Сессия импортирована · " + formatDate(twitchSession.at)
+          : "Токен не импортирован";
+        el.tokenBadge.textContent = twitchSession ? "ok" : "не задан";
+        el.tokenBadge.classList.toggle("ok", !!twitchSession);
+      }
+
+      function loadPrefs() {
+        const stored = readJson(PREFS_KEY, {});
+        prefs = {
+          compactOnStart: !!stored.compactOnStart,
+          reduceMotion: !!stored.reduceMotion,
+        };
+      }
+
+      function savePrefs() {
+        writeJson(PREFS_KEY, prefs);
+      }
+
+      function applyPrefs() {
+        document.body.classList.toggle("reduce-motion", prefs.reduceMotion);
+        el.prefCompact.checked = prefs.compactOnStart;
+        el.prefMotion.checked = prefs.reduceMotion;
+      }
+
       function showToast(message, kind) {
         el.toast.textContent = String(message || "Неизвестная ошибка");
         el.toast.classList.toggle("ok", kind === "ok");
@@ -1605,92 +2089,138 @@
         toastTimer = window.setTimeout(() => el.toast.classList.remove("show"), 4200);
       }
 
-      function openTokenImport() {
-        if (document.activeElement && document.activeElement !== el.importInput) {
-          document.activeElement.blur();
-        }
-        el.importForm.hidden = false;
-        el.toolbar.classList.add("importing");
-        el.importInput.value = "";
-        el.importInput.focus();
-      }
-
-      function closeTokenImport() {
-        el.importForm.hidden = true;
-        el.toolbar.classList.remove("importing");
-        el.importInput.value = "";
-        el.importSubmit.disabled = false;
-        el.importSubmit.textContent = "Войти";
-      }
-
       function errorText(error) {
         if (typeof error === "string") return error;
         if (error && typeof error.message === "string") return error.message;
-        try { return JSON.stringify(error); } catch (_) { return String(error); }
+        try {
+          return JSON.stringify(error);
+        } catch (_) {
+          return String(error);
+        }
       }
 
-      async function run(command, args) {
-        if (!invoke) {
-          showToast("Tauri IPC недоступен — запустите приложение через cargo run");
+      function setBusy(value) {
+        window.clearTimeout(busyTimer);
+        document.body.classList.toggle("busy", !!value);
+        if (value) {
+          busyTimer = window.setTimeout(() => document.body.classList.remove("busy"), 5000);
+        }
+      }
+
+      function formatRam(mb) {
+        if (!mb) return "—";
+        if (mb >= 1024) return (mb / 1024).toFixed(2) + " GB";
+        return mb + " MB";
+      }
+
+      function formatCpu(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(1) + "%" : "—";
+      }
+
+      async function refreshMetrics(force) {
+        if (!invoke || metricsBusy || document.hidden) return;
+        const active = activeTab();
+        if (!force && active && !active.sleeping) return;
+        metricsBusy = true;
+        try {
+          const stats = await invoke("get_runtime_stats");
+          el.ramMetric.textContent = formatRam(stats?.ramMb || 0);
+          el.cpuMetric.textContent = formatCpu(stats?.cpuPercent);
+          el.procMetric.textContent = stats?.processes ? String(stats.processes) : "—";
+        } catch (_) {
+          el.ramMetric.textContent = "—";
+          el.cpuMetric.textContent = "—";
+          el.procMetric.textContent = "—";
+        } finally {
+          metricsBusy = false;
+        }
+      }
+
+      function updateCommandDetect() {
+        const target = detectTarget(el.commandInput.value);
+        el.detectBadge.dataset.kind = target.kind;
+        el.detectBadge.textContent = target.label;
+        return target;
+      }
+
+      function positionTabGlider() {
+        const tab = activeTab();
+        const glider = el.tabGlider;
+        if (!glider) return;
+        if (!tab) {
+          glider.style.opacity = "0";
+          glider.style.transform = "translateX(0) scaleX(0)";
+          glider.removeAttribute("data-site");
           return;
         }
-        try {
-          const next = await invoke(command, args || {});
-          if (next) applyState(next);
-        } catch (error) {
-          showToast(errorText(error));
+        const node = el.tabs.querySelector('.tab[data-id="' + tab.id + '"]');
+        if (!node) {
+          glider.style.opacity = "0";
+          return;
         }
+        const site = siteClass(tab.url);
+        glider.dataset.site = site;
+        glider.style.opacity = "1";
+        glider.style.transform =
+          "translateX(" + node.offsetLeft + "px) scaleX(" + node.offsetWidth + ")";
       }
 
-      function applyState(next) {
-        if (!next || typeof next !== "object") return;
-        state = next;
-
-        document.body.classList.toggle("compact", !!state.compact);
-        el.pin.classList.toggle("active", !!state.alwaysOnTop);
-        el.pin.setAttribute("aria-pressed", String(!!state.alwaysOnTop));
-
-        const active = activeTab();
-        const awake = !!active && !active.sleeping;
-
-        el.back.disabled = !awake;
-        el.reload.disabled = !awake;
-        el.sleep.disabled = !active;
-        el.sleep.classList.toggle("wake", !!active && !!active.sleeping);
-        el.sleep.title = active && active.sleeping
-          ? "Разбудить вкладку (создать WebView заново)"
-          : "Усыпить вкладку (выгрузить из RAM)";
-        el.sleep.setAttribute("aria-label", el.sleep.title);
-        el.sleepIcon.innerHTML = active && active.sleeping ? SUN : MOON;
-
-        if (document.activeElement !== el.address) {
-          el.address.value = active ? active.url : "";
+      function positionDockGlider() {
+        const glider = el.dockGlider;
+        if (!glider) return;
+        const tab = activeTab();
+        const site = tab ? siteClass(tab.url) : "";
+        const buttons = Array.from(document.querySelectorAll(".dock-btn[data-site]"));
+        buttons.forEach((btn) => btn.classList.toggle("active", btn.dataset.site === site));
+        const activeBtn = buttons.find((btn) => btn.dataset.site === site);
+        if (!activeBtn) {
+          glider.style.opacity = "0";
+          return;
         }
+        glider.style.opacity = "1";
+        glider.style.transform = "translateX(" + activeBtn.offsetLeft + "px)";
+      }
 
-        el.profile.textContent = state.profilePath || "—";
-        el.extensionsPath.textContent = state.extensionsPath || "—";
-        document.title = active
-          ? `${active.title} — Lite Stream Browser`
-          : "Lite Stream Browser";
-
-        renderTabs();
-
-        // A native child WebView occupies everything below the 36px toolbar.
-        // Keep both HTML overlays out of its way whenever any tab is active.
-        el.welcome.hidden = !!active;
-        el.sleeping.hidden = !(active && active.sleeping);
-        if (active && active.sleeping) {
-          el.sleepTitle.textContent = active.title || "Вкладка выгружена";
-          el.sleepUrl.textContent = active.url || "";
-        }
+      function updatePlatformCards() {
+        const cards = document.querySelectorAll(".platform-card[data-site]");
+        cards.forEach((card) => {
+          const site = card.dataset.site;
+          const tab = state.tabs.find((item) => siteClass(item.url) === site);
+          const stateEl = card.querySelector(".pc-state");
+          const labelEl = card.querySelector("[data-state-label]");
+          if (!stateEl || !labelEl) return;
+          stateEl.classList.remove("awake", "sleeping");
+          stateEl.dataset.state = "saved";
+          if (tab) {
+            if (tab.id === state.activeId && !tab.sleeping) {
+              labelEl.textContent = "Активна";
+              stateEl.classList.add("awake");
+              stateEl.dataset.state = "awake";
+            } else if (tab.sleeping) {
+              labelEl.textContent = "Выгружена";
+              stateEl.classList.add("sleeping");
+              stateEl.dataset.state = "sleeping";
+            } else {
+              labelEl.textContent = "Открыта";
+              stateEl.classList.add("awake");
+              stateEl.dataset.state = "awake";
+            }
+          } else {
+            labelEl.textContent = "Сессия общая";
+          }
+        });
       }
 
       function renderTabs() {
         const scroll = el.tabs.scrollLeft;
-        const fragment = document.createDocumentFragment();
+        const existing = el.tabs.querySelectorAll(".tab");
+        existing.forEach((node) => node.remove());
 
+        const fragment = document.createDocumentFragment();
         for (const tab of state.tabs) {
           const isActive = tab.id === state.activeId;
+          const site = siteClass(tab.url);
           const node = document.createElement("div");
           node.className = "tab" + (isActive ? " active" : "") + (tab.sleeping ? " sleeping" : "");
           node.dataset.id = String(tab.id);
@@ -1698,11 +2228,11 @@
           node.setAttribute("aria-selected", String(isActive));
           node.tabIndex = isActive ? 0 : -1;
           node.title = tab.sleeping
-            ? `${tab.title} — спит, клик разбудит вкладку`
-            : `${tab.title}\n${tab.url}`;
+            ? (tab.title || "Без названия") + " — спит, клик разбудит"
+            : (tab.title || "Без названия") + "\n" + (tab.url || "");
 
           const dot = document.createElement("span");
-          dot.className = "dot " + siteClass(tab.url);
+          dot.className = "site-dot " + site;
 
           const title = document.createElement("span");
           title.className = "tab-title";
@@ -1712,8 +2242,8 @@
 
           if (tab.sleeping) {
             const zz = document.createElement("span");
-            zz.className = "zz";
-            zz.textContent = "zZ";
+            zz.className = "sleep-mark";
+            zz.innerHTML = MOON;
             node.append(zz);
           }
 
@@ -1722,215 +2252,460 @@
           close.type = "button";
           close.dataset.close = "1";
           close.title = "Закрыть вкладку";
-          close.setAttribute("aria-label", `Закрыть вкладку ${tab.title}`);
+          close.setAttribute("aria-label", "Закрыть вкладку " + (tab.title || ""));
           close.textContent = "×";
           node.append(close);
 
           fragment.append(node);
         }
 
-        el.tabs.replaceChildren(fragment);
+        if (el.tabGlider) {
+          el.tabs.insertBefore(fragment, el.tabGlider);
+        } else {
+          el.tabs.append(fragment);
+        }
         el.tabs.scrollLeft = scroll;
+        el.tabs.dataset.empty = state.tabs.length ? "false" : "true";
 
         const activeNode = el.tabs.querySelector(".tab.active");
         if (activeNode) {
           activeNode.scrollIntoView({ block: "nearest", inline: "nearest" });
         }
+
+        window.requestAnimationFrame(() => {
+          positionTabGlider();
+          positionDockGlider();
+        });
       }
 
-      function openTab(url) {
-        run("open_tab", { url });
-        // Extensions are installed while the new child WebView is created,
-        // so refresh the home screen list shortly afterwards.
-        window.setTimeout(refreshExtensions, 700);
-      }
+      function applyState(next) {
+        if (!next || typeof next !== "object") return;
+        state = next;
 
-      // ------------------------------------------------------------ events
-
-      el.addressForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const value = el.address.value.trim();
-        if (!value) return;
-        el.address.blur();
-        run("navigate", { url: value });
-      });
-
-      el.address.addEventListener("focus", () => el.address.select());
-
-      el.homeSearch.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const value = el.homeSearchInput.value.trim();
-        if (!value) return;
-        el.homeSearchInput.value = "";
-        openTab(value);
-      });
-
-      el.back.addEventListener("click", () => run("go_back"));
-      el.reload.addEventListener("click", () => run("reload"));
-      el.sleep.addEventListener("click", () => {
-        const active = activeTab();
-        if (!active) return;
-        run(active.sleeping ? "wake" : "hibernate");
-      });
-      el.compact.addEventListener("click", () => run("toggle_compact"));
-      el.showPanel.addEventListener("click", () => run("toggle_compact"));
-      el.pin.addEventListener("click", () => run("toggle_always_on_top"));
-
-      el.extBtn.addEventListener("click", openExtensionsFolder);
-      el.openExtBtn.addEventListener("click", openExtensionsFolder);
-
-      el.tokenBtn.addEventListener("click", openTokenImport);
-      el.importCancel.addEventListener("click", closeTokenImport);
-
-      el.importForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const token = el.importInput.value.trim();
-        if (!token) {
-          el.importInput.focus();
-          return;
+        document.body.classList.toggle("compact", !!state.compact);
+        if (el.pin) {
+          el.pin.classList.toggle("active", !!state.alwaysOnTop);
+          el.pin.setAttribute("aria-pressed", String(!!state.alwaysOnTop));
         }
+
+        const active = activeTab();
+        const awake = !!active && !active.sleeping;
+
+        if (el.back) el.back.disabled = !awake;
+        if (el.reload) el.reload.disabled = !awake;
+        if (el.sleep) {
+          el.sleep.disabled = !active;
+          el.sleep.classList.toggle("wake", !!active && !!active.sleeping);
+          const sleepTitle = active && active.sleeping
+            ? "Разбудить вкладку (создать WebView заново)"
+            : "Усыпить вкладку (выгрузить из RAM)";
+          el.sleep.title = sleepTitle;
+          el.sleep.setAttribute("aria-label", sleepTitle);
+        }
+        if (el.sleepIcon) el.sleepIcon.innerHTML = active && active.sleeping ? SUN : MOON;
+
+        if (el.hibDot) {
+          if (!active) {
+            el.hibDot.className = "hib-dot";
+            el.hibDot.title = "Нет активной вкладки";
+            el.hibDot.setAttribute("aria-label", "Нет активной вкладки");
+          } else if (active.sleeping) {
+            el.hibDot.className = "hib-dot";
+            el.hibDot.title = "Вкладка выгружена из RAM";
+            el.hibDot.setAttribute("aria-label", "Вкладка выгружена");
+          } else {
+            el.hibDot.className = "hib-dot awake";
+            el.hibDot.title = "WebView активен";
+            el.hibDot.setAttribute("aria-label", "WebView активен");
+          }
+        }
+
+        if (el.address && document.activeElement !== el.address) {
+          el.address.value = active ? (active.url || "") : "";
+        }
+
+        if (el.profilePath) el.profilePath.textContent = state.profilePath || "—";
+        if (el.extensionsPath) el.extensionsPath.textContent = state.extensionsPath || "—";
+
+        document.title = active
+          ? (active.title || "Вкладка") + " — Lite Stream Browser"
+          : "Lite Stream Browser";
+
+        renderTabs();
+        updatePlatformCards();
+        renderResume();
+
+        el.homeView.hidden = !!active;
+        el.sleepingView.hidden = !(active && active.sleeping);
+        if (active && active.sleeping) {
+          el.sleepTitle.textContent = active.title || "Вкладка выгружена";
+          el.sleepUrl.textContent = active.url || "";
+        }
+
+        if (!active || (active && active.sleeping)) {
+          refreshMetrics(false);
+        }
+      }
+
+      async function run(command, args) {
         if (!invoke) {
           showToast("Tauri IPC недоступен — запустите приложение через cargo run");
-          return;
+          return null;
         }
-
-        el.importSubmit.disabled = true;
-        el.importSubmit.textContent = "Импорт…";
         try {
-          const next = await invoke("import_twitch_token", { token });
+          setBusy(true);
+          const next = await invoke(command, args || {});
           if (next) applyState(next);
-          closeTokenImport();
-          showToast("Twitch: сессия импортирована, вкладка перезагружена", "ok");
+          return next;
         } catch (error) {
           showToast(errorText(error));
-          el.importSubmit.disabled = false;
-          el.importSubmit.textContent = "Войти";
-          el.importInput.focus();
-          el.importInput.select();
+          return null;
+        } finally {
+          setBusy(false);
         }
-      });
+      }
 
-      document.querySelectorAll("[data-url]").forEach((button) => {
-        button.addEventListener("click", () => openTab(button.dataset.url));
-      });
+      async function openTab(url) {
+        const target = String(url || "").trim();
+        if (!target) return;
+        rememberRecent(labelForUrl(ensureScheme(target)), ensureScheme(target));
+        renderResume();
+        await run("open_tab", { url: target });
+        window.setTimeout(() => refreshExtensions(false), 700);
+      }
 
-      el.addFavBtn.addEventListener("click", () => showFavoritesForm(el.favForm.hidden));
-      el.favCancel.addEventListener("click", () => showFavoritesForm(false));
-
-      el.favForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const favorite = favoriteDraft();
-        if (!favorite) return;
-        favorites.unshift(favorite);
-        saveFavorites();
-        renderFavorites();
-        showFavoritesForm(false);
-        showToast("Канал добавлен в избранное", "ok");
-      });
-
-      el.favList.addEventListener("click", (event) => {
-        const remove = event.target.closest("[data-fav-delete]");
-        if (remove) {
-          event.stopPropagation();
-          const id = remove.dataset.favDelete;
-          favorites = favorites.filter((favorite) => favorite.id !== id);
-          saveFavorites();
-          renderFavorites();
+      async function openSettings(focusToken) {
+        if (settingsOpen) {
+          if (focusToken) el.tokenInput.focus();
           return;
         }
-
-        const card = event.target.closest("[data-fav]");
-        if (!card) return;
-        const favorite = favorites.find((item) => item.id === card.dataset.fav);
-        if (favorite) openTab(favorite.url);
-      });
-
-      el.favList.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        const card = event.target.closest("[data-fav]");
-        if (!card || event.target.closest("[data-fav-delete]")) return;
-        event.preventDefault();
-        const favorite = favorites.find((item) => item.id === card.dataset.fav);
-        if (favorite) openTab(favorite.url);
-      });
-
-      el.tabs.addEventListener("click", (event) => {
-        const tab = event.target.closest(".tab");
-        if (!tab) return;
-        const id = Number(tab.dataset.id);
-        if (!Number.isFinite(id)) return;
-
-        if (event.target.closest("[data-close]")) {
-          event.stopPropagation();
-          run("close_tab", { id });
-          return;
-        }
-        run("switch_tab", { id });
-      });
-
-      el.tabs.addEventListener("keydown", (event) => {
-        const tab = event.target.closest(".tab");
-        if (!tab) return;
-        const id = Number(tab.dataset.id);
-        if (!Number.isFinite(id)) return;
-
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          run("switch_tab", { id });
-        } else if (event.key === "Delete" || event.key === "Backspace") {
-          event.preventDefault();
-          run("close_tab", { id });
-        }
-      });
-
-      el.tabs.addEventListener("wheel", (event) => {
-        if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-          el.tabs.scrollLeft += event.deltaY;
-          event.preventDefault();
-        }
-      }, { passive: false });
-
-      el.wake.addEventListener("click", () => run("wake"));
-      el.closeSleep.addEventListener("click", () => {
-        const active = activeTab();
-        if (active) run("close_tab", { id: active.id });
-      });
-
-      document.addEventListener("keydown", (event) => {
-        const key = event.key.toLowerCase();
-
-        if (event.key === "Escape" && !el.importForm.hidden) {
-          event.preventDefault();
-          closeTokenImport();
-          return;
-        }
-        if (event.key === "Escape" && document.activeElement === el.address) {
-          el.address.blur();
-          return;
-        }
-        if (event.ctrlKey && key === "l") {
-          event.preventDefault();
-          el.address.focus();
-          el.address.select();
-          return;
-        }
-        if (event.altKey && event.key === "ArrowLeft") {
-          event.preventDefault();
-          run("go_back");
-          return;
-        }
-        if ((event.ctrlKey && key === "r") || event.key === "F5") {
-          event.preventDefault();
-          run("reload");
-        }
-      });
-
-      // ------------------------------------------------------------ boot
-
-      (async () => {
-        loadFavorites();
-        renderFavorites();
+        settingsOpen = true;
+        el.settingsOverlay.hidden = false;
+        document.body.classList.add("settings-open");
+        renderTokenStatus();
         renderExtensions();
+        await refreshExtensions(false);
+
+        const active = activeTab();
+        if (active && !active.sleeping && invoke) {
+          hiddenWebview = true;
+          try {
+            await invoke("set_webview_visible", { visible: false });
+          } catch (_) {
+            hiddenWebview = false;
+          }
+        } else {
+          hiddenWebview = false;
+        }
+
+        requestAnimationFrame(() => el.settingsOverlay.classList.add("open"));
+        window.setTimeout(() => {
+          if (focusToken) {
+            el.tokenInput.focus();
+          } else if (el.settingsClose) {
+            el.settingsClose.focus();
+          }
+        }, 0);
+      }
+
+      async function closeSettings() {
+        if (!settingsOpen) return;
+        settingsOpen = false;
+        el.settingsOverlay.classList.remove("open");
+        document.body.classList.remove("settings-open");
+
+        const restore = hiddenWebview;
+        hiddenWebview = false;
+
+        window.setTimeout(() => {
+          el.settingsOverlay.hidden = true;
+        }, 180);
+
+        if (restore && invoke) {
+          try {
+            const next = await invoke("set_webview_visible", { visible: true });
+            if (next) applyState(next);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+      }
+      function bindEvents() {
+        el.back.addEventListener("click", () => run("go_back"));
+        el.reload.addEventListener("click", () => run("reload"));
+        el.sleep.addEventListener("click", () => {
+          const active = activeTab();
+          if (!active) return;
+          run(active.sleeping ? "wake" : "hibernate");
+        });
+        el.compact.addEventListener("click", () => run("toggle_compact"));
+        el.showPanel.addEventListener("click", () => run("toggle_compact"));
+        el.pin.addEventListener("click", () => run("toggle_always_on_top"));
+        el.tokenBtn.addEventListener("click", () => openSettings(true));
+        el.settingsBtn.addEventListener("click", () => openSettings(false));
+        el.homeSettingsBtn.addEventListener("click", () => openSettings(false));
+
+        document.querySelectorAll(".dock-btn[data-url], .platform-card[data-url]").forEach((node) => {
+          node.addEventListener("click", () => openTab(node.dataset.url));
+        });
+
+        document.querySelectorAll(".platform-card").forEach((card) => {
+          card.addEventListener("pointermove", (event) => {
+            if (document.hidden || settingsOpen || prefs.reduceMotion) return;
+            const rect = card.getBoundingClientRect();
+            card.style.setProperty("--mx", (event.clientX - rect.left) + "px");
+            card.style.setProperty("--my", (event.clientY - rect.top) + "px");
+          });
+          card.addEventListener("pointerleave", () => {
+            card.style.setProperty("--mx", "-999px");
+            card.style.setProperty("--my", "-999px");
+          });
+        });
+
+        el.addressForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const value = el.address.value.trim();
+          if (!value) return;
+          el.address.blur();
+          run("navigate", { url: value });
+          rememberRecent(labelForUrl(ensureScheme(value)), ensureScheme(value));
+          renderResume();
+        });
+        el.address.addEventListener("focus", () => el.address.select());
+
+        el.commandForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const value = el.commandInput.value.trim();
+          if (!value) return;
+          const target = detectTarget(value);
+          const url = target.url || value;
+          el.commandInput.value = "";
+          updateCommandDetect();
+          openTab(url);
+        });
+        el.commandInput.addEventListener("input", updateCommandDetect);
+
+        el.tabs.addEventListener("click", (event) => {
+          const tab = event.target.closest(".tab");
+          if (!tab) return;
+          const id = Number(tab.dataset.id);
+          if (!Number.isFinite(id)) return;
+          if (event.target.closest("[data-close]")) {
+            event.stopPropagation();
+            run("close_tab", { id });
+            return;
+          }
+          run("switch_tab", { id });
+        });
+        el.tabs.addEventListener("keydown", (event) => {
+          const tab = event.target.closest(".tab");
+          if (!tab) return;
+          const id = Number(tab.dataset.id);
+          if (!Number.isFinite(id)) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            run("switch_tab", { id });
+          } else if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            run("close_tab", { id });
+          }
+        });
+        el.tabs.addEventListener("wheel", (event) => {
+          if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+            el.tabs.scrollLeft += event.deltaY;
+            event.preventDefault();
+          }
+        }, { passive: false });
+
+        el.wake.addEventListener("click", () => run("wake"));
+        el.closeSleep.addEventListener("click", () => {
+          const active = activeTab();
+          if (active) run("close_tab", { id: active.id });
+        });
+
+        el.resumeToggle.addEventListener("click", () => {
+          resumeExpanded = !resumeExpanded;
+          renderResume();
+        });
+        el.addFavBtn.addEventListener("click", () => showFavForm(el.favForm.hidden));
+        el.favCancel.addEventListener("click", () => showFavForm(false));
+        el.favForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const favorite = favoriteDraft();
+          if (!favorite) return;
+          favorites.unshift(favorite);
+          saveFavorites();
+          renderResume();
+          showFavForm(false);
+          showToast("Канал добавлен в избранное", "ok");
+        });
+        el.resumeGrid.addEventListener("click", (event) => {
+          const remove = event.target.closest("[data-remove]");
+          if (remove) {
+            event.stopPropagation();
+            const card = remove.closest(".resume-card");
+            if (card) removeResume(card.dataset.id, card.dataset.kind);
+            return;
+          }
+          const card = event.target.closest(".resume-card");
+          if (!card || !card.dataset.url) return;
+          const existing = tabForUrl(card.dataset.url);
+          if (existing) {
+            run("switch_tab", { id: existing.id });
+          } else {
+            openTab(card.dataset.url);
+          }
+        });
+        el.resumeGrid.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const card = event.target.closest(".resume-card");
+          if (!card || event.target.closest("[data-remove]")) return;
+          event.preventDefault();
+          const existing = tabForUrl(card.dataset.url);
+          if (existing) {
+            run("switch_tab", { id: existing.id });
+          } else {
+            openTab(card.dataset.url);
+          }
+        });
+
+        el.settingsClose.addEventListener("click", closeSettings);
+        el.settingsDone.addEventListener("click", closeSettings);
+        el.settingsOverlay.addEventListener("click", (event) => {
+          if (event.target === el.settingsOverlay) closeSettings();
+        });
+
+        el.tokenEye.addEventListener("click", () => {
+          const showing = el.tokenInput.type === "text";
+          el.tokenInput.type = showing ? "password" : "text";
+          el.tokenEye.title = showing ? "Показать токен" : "Скрыть токен";
+          el.tokenEye.setAttribute("aria-label", el.tokenEye.title);
+          el.tokenInput.focus();
+        });
+
+        el.tokenInput.addEventListener("input", () => {
+          if (!el.tokenInput.value) renderTokenStatus();
+          else renderTokenStatus(parseCookieNames(el.tokenInput.value));
+        });
+
+        el.tokenForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const token = el.tokenInput.value.trim();
+          if (!token) {
+            el.tokenInput.focus();
+            return;
+          }
+          if (!invoke) {
+            showToast("Tauri IPC недоступен — запустите приложение через cargo run");
+            return;
+          }
+          el.tokenSubmit.disabled = true;
+          el.tokenSubmit.textContent = "Импорт…";
+          try {
+            const cookies = parseCookieNames(token);
+            const next = await invoke("import_twitch_token", { token });
+            if (next) applyState(next);
+            twitchSession = { at: Date.now(), cookies: cookies.length ? cookies : ["auth-token"] };
+            saveTwitchSession();
+            el.tokenInput.value = "";
+            el.tokenInput.type = "password";
+            renderTokenStatus();
+            showToast("Twitch: сессия импортирована, вкладка перезагружена", "ok");
+          } catch (error) {
+            showToast(errorText(error));
+          } finally {
+            el.tokenSubmit.disabled = false;
+            el.tokenSubmit.textContent = "Импорт";
+          }
+        });
+
+        el.extRefreshBtn.addEventListener("click", () => refreshExtensions(true));
+        el.openExtBtn.addEventListener("click", openExtensionsFolder);
+
+        el.prefCompact.addEventListener("change", () => {
+          prefs.compactOnStart = !!el.prefCompact.checked;
+          savePrefs();
+        });
+        el.prefMotion.addEventListener("change", () => {
+          prefs.reduceMotion = !!el.prefMotion.checked;
+          savePrefs();
+          applyPrefs();
+        });
+        el.hibernateNowBtn.addEventListener("click", () => run("hibernate"));
+
+        document.addEventListener("keydown", (event) => {
+          const key = event.key.toLowerCase();
+
+          if (event.key === "Escape") {
+            if (settingsOpen) {
+              event.preventDefault();
+              closeSettings();
+              return;
+            }
+            if (!el.favForm.hidden) {
+              event.preventDefault();
+              showFavForm(false);
+              return;
+            }
+            if (document.activeElement === el.address) {
+              el.address.blur();
+              return;
+            }
+          }
+
+          if (event.ctrlKey && key === "l") {
+            event.preventDefault();
+            if (state.compact) run("toggle_compact");
+            window.setTimeout(() => {
+              el.address.focus();
+              el.address.select();
+            }, 0);
+            return;
+          }
+          if (event.ctrlKey && event.key === ",") {
+            event.preventDefault();
+            openSettings(false);
+            return;
+          }
+          if (event.altKey && event.key === "ArrowLeft") {
+            event.preventDefault();
+            run("go_back");
+            return;
+          }
+          if ((event.ctrlKey && key === "r") || event.key === "F5") {
+            event.preventDefault();
+            run("reload");
+          }
+        });
+
+        window.addEventListener("resize", () => {
+          positionTabGlider();
+          positionDockGlider();
+        });
+        el.tabs.addEventListener("scroll", () => {
+          positionTabGlider();
+        }, { passive: true });
+
+        document.addEventListener("visibilitychange", () => {
+          document.body.classList.toggle("is-hidden", document.hidden);
+          if (!document.hidden) {
+            refreshMetrics(true);
+            if (settingsOpen) refreshExtensions(false);
+          }
+        });
+      }
+
+      async function boot() {
+        loadFavorites();
+        loadRecents();
+        loadPrefs();
+        loadTwitchSession();
+        applyPrefs();
+        updateCommandDetect();
+        renderTokenStatus();
+        renderResume();
+        renderExtensions();
+        bindEvents();
 
         if (!invoke) {
           showToast("Tauri IPC недоступен — запустите приложение через cargo run");
@@ -1942,15 +2717,25 @@
             await listen("state-changed", (event) => applyState(event.payload));
           }
           applyState(await invoke("get_state"));
-          await refreshExtensions();
+
+          if (prefs.compactOnStart && !state.compact) {
+            await run("toggle_compact");
+          }
+
+          await refreshExtensions(false);
+          await refreshMetrics(true);
         } catch (error) {
           showToast(errorText(error));
         }
-      })();
 
-      window.addEventListener("focus", () => {
-        if (!state.tabs.length) refreshExtensions();
-      });
+        window.setInterval(() => {
+          const active = activeTab();
+          if (document.hidden || settingsOpen) return;
+          if (!active || active.sleeping) refreshMetrics(false);
+        }, 3500);
+      }
+
+      boot();
     })();
   </script>
 </body>

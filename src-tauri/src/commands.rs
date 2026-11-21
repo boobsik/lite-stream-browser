@@ -467,3 +467,80 @@ pub async fn list_extensions(app: AppHandle) -> Result<Vec<browser::ExtensionInf
 
     Ok(browser::collect_extensions(webview.as_ref(), &directory))
 }
+
+// ---------------------------------------------------------------------------
+// Navigation helpers used by the toolbar / global Ctrl+Tab shortcut
+// ---------------------------------------------------------------------------
+
+/// Cycles through tabs. A background WebView is always hibernated by
+/// `activate_tab`, so Ctrl+Tab keeps the one-WebView memory guarantee.
+#[tauri::command]
+pub async fn cycle_tab(app: AppHandle, direction: Option<i32>) -> Result<UiState, String> {
+    cycle_tab_sync(&app, direction.unwrap_or(1))
+}
+
+/// Also called from the global Ctrl+Tab shortcut handler.
+pub fn cycle_tab_sync(app: &AppHandle, direction: i32) -> Result<UiState, String> {
+    let shared = shared_state(app);
+
+    let target = {
+        let guard = state::lock(&shared);
+        if guard.tabs.is_empty() {
+            None
+        } else {
+            let step: isize = if direction < 0 { -1 } else { 1 };
+            let index = guard
+                .active
+                .and_then(|id| guard.tabs.iter().position(|tab| tab.id == id))
+                .map(|index| {
+                    (index as isize + step).rem_euclid(guard.tabs.len() as isize) as usize
+                })
+                .unwrap_or(0);
+            Some(guard.tabs[index].id)
+        }
+    };
+
+    match target {
+        Some(id) => browser::activate_tab(app, &shared, id),
+        None => Ok(browser::snapshot_and_emit(app, &shared)),
+    }
+}
+
+/// Hides or shows the active child WebView without destroying it.
+///
+/// A native child WebView is composited above the main HTML webview, so the
+/// settings dialog cannot cover it. Hiding keeps the stream alive (unlike
+/// hibernation) while the user works in the settings panel.
+#[tauri::command]
+pub async fn set_webview_visible(app: AppHandle, visible: bool) -> Result<UiState, String> {
+    let shared = shared_state(&app);
+    let label = state::lock(&shared).active_webview_label();
+
+    if let Some(label) = label {
+        if let Some(webview) = app.get_webview(&label) {
+            if visible {
+                webview
+                    .show()
+                    .map_err(|error| format!("Не удалось показать WebView: {error}"))?;
+                browser::apply_layout(&app);
+                let _ = webview.set_focus();
+            } else {
+                webview
+                    .hide()
+                    .map_err(|error| format!("Не удалось скрыть WebView: {error}"))?;
+                if let Some(main) = app.get_webview("main") {
+                    let _ = main.set_focus();
+                }
+            }
+        }
+    }
+
+    Ok(browser::snapshot_and_emit(&app, &shared))
+}
+
+/// RAM/CPU of the whole process tree, sampled for the home screen.
+#[tauri::command]
+pub fn get_runtime_stats() -> crate::metrics::RuntimeStats {
+    crate::metrics::sample()
+}
+
