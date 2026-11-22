@@ -1,4 +1,5 @@
 use crate::state::{self, SharedState, UiState};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -139,6 +140,137 @@ const INITIALIZATION_SCRIPT: &str = r#"
 "#;
 
 static WEBVIEW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static SUI_SCRIPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+static EXTENSION_POPUP_LABEL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn close_extension_popup(app: &AppHandle) -> bool {
+    let label = EXTENSION_POPUP_LABEL.lock().unwrap_or_else(|p| p.into_inner()).take();
+    if let Some(label) = label {
+        if let Some(webview) = app.get_webview(&label) {
+            let _ = webview.close();
+        }
+        return true;
+    }
+    false
+}
+
+fn sui_script() -> &'static str {
+    SUI_SCRIPT.get_or_init(stream_ui_studio_script)
+}
+
+const SUI_CONSTANTS_JS: &str = include_str!("../resources/stream-ui-studio/lib/constants.js");
+const SUI_DRAG_JS: &str = include_str!("../resources/stream-ui-studio/lib/drag.js");
+const SUI_STORAGE_JS: &str = include_str!("../resources/stream-ui-studio/lib/storage.js");
+const SUI_STYLE_ENGINE_JS: &str = include_str!("../resources/stream-ui-studio/lib/style-engine.js");
+const SUI_INSPECTOR_JS: &str = include_str!("../resources/stream-ui-studio/lib/inspector.js");
+const SUI_UI_STYLES_JS: &str = include_str!("../resources/stream-ui-studio/lib/ui-styles.js");
+const SUI_UI_JS: &str = include_str!("../resources/stream-ui-studio/lib/ui.js");
+
+fn stream_ui_studio_script() -> String {
+    // Injected at document start on supported platforms. Modules are inlined in
+    // dependency order; content.js bootstrap is replaced with a direct init that
+    // also exposes a toggle hook for the native toolbar button.
+    let mut out = String::with_capacity(1024 * 256);
+    out.push_str(
+        r#"
+(() => {
+  "use strict";
+  if (window.__SUI_NATIVE_HOST__) return;
+  window.__SUI_NATIVE_HOST__ = true;
+
+  const host = (location.hostname || "").toLowerCase();
+  const supported =
+    host === "twitch.tv" || host.endsWith(".twitch.tv") ||
+    host === "youtube.com" || host.endsWith(".youtube.com") ||
+    host === "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com") ||
+    host === "youtu.be";
+  if (!supported) return;
+
+  try {
+"#,
+    );
+    for (name, src) in [
+        ("constants", SUI_CONSTANTS_JS),
+        ("drag", SUI_DRAG_JS),
+        ("storage", SUI_STORAGE_JS),
+        ("style-engine", SUI_STYLE_ENGINE_JS),
+        ("inspector", SUI_INSPECTOR_JS),
+        ("ui-styles", SUI_UI_STYLES_JS),
+        ("ui", SUI_UI_JS),
+    ] {
+        out.push_str("/* SUI module: ");
+        out.push_str(name);
+        out.push_str(" */\n");
+        out.push_str(src);
+        out.push_str("\n;\n");
+    }
+
+    out.push_str(
+        r#"
+    const boot = () => {
+      try {
+        const SUI = window.SUI;
+        if (!SUI || !SUI.storage || !SUI.ui || !SUI.styleEngine || !SUI.inspector) return;
+        if (window.__SUI_NATIVE_BOOTED__) return;
+        window.__SUI_NATIVE_BOOTED__ = true;
+
+        let lastPlatform = null;
+        const applyState = () => {
+          const platform = SUI.detectPlatform(location.hostname);
+          const st = platform ? SUI.storage.getState().platforms[platform] : null;
+          if (!st) return;
+          SUI.styleEngine.render(platform, st);
+          if (platform !== lastPlatform) {
+            lastPlatform = platform;
+            SUI.inspector.setPlatform(platform);
+            SUI.ui.setPlatform(platform);
+          } else {
+            SUI.ui.refresh();
+          }
+        };
+
+        SUI.storage.subscribe(applyState);
+        SUI.styleEngine.onRoute(applyState);
+        SUI.storage.load(() => {
+          try {
+            SUI.ui.mount();
+            applyState();
+            SUI.styleEngine.startWatching();
+          } catch (e) { console.error("[SUI/native] boot", e); }
+        });
+
+        window.__SUI_TOGGLE_PANEL__ = () => {
+          try {
+            const platform = SUI.detectPlatform(location.hostname);
+            if (!platform) return false;
+            SUI.ui.setPlatform(platform);
+            SUI.ui.toggle();
+            return !!(SUI.ui.isOpen && SUI.ui.isOpen());
+          } catch (e) { console.error("[SUI/native] toggle", e); return false; }
+        };
+        window.__SUI_OPEN_PANEL__ = () => {
+          try {
+            const platform = SUI.detectPlatform(location.hostname);
+            if (!platform) return false;
+            SUI.ui.setPlatform(platform);
+            SUI.ui.open();
+            return true;
+          } catch (e) { console.error("[SUI/native] open", e); return false; }
+        };
+      } catch (e) { console.error("[SUI/native]", e); }
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+      boot();
+    }
+  } catch (e) { console.error("[SUI/native] init", e); }
+})();
+"#,
+    );
+    out
+}
 
 /// Removes the Edge/WebView2 product tokens from a User-Agent string while
 /// keeping the real Chromium version, e.g.
@@ -366,6 +498,21 @@ pub struct ExtensionInfo {
     pub status: String,
 }
 
+/// Rich extension info for the extensions menu.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledExtensionInfo {
+    pub id: Option<String>,
+    pub name: String,
+    pub version: String,
+    pub path: String,
+    pub popup_path: Option<String>,
+    pub options_path: Option<String>,
+    pub icon_data_url: Option<String>,
+    pub enabled: bool,
+    pub status: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct LiveExtension {
     pub id: String,
@@ -386,6 +533,9 @@ struct ExtensionFolder {
     path: PathBuf,
     name: String,
     version: String,
+    popup_path: Option<String>,
+    options_path: Option<String>,
+    icon_path: Option<String>,
 }
 
 fn extension_key(path: &Path) -> String {
@@ -396,7 +546,70 @@ fn extension_key(path: &Path) -> String {
         .to_lowercase()
 }
 
-fn read_manifest(dir: &Path) -> Option<(String, String)> {
+fn sanitize_extension_rel_path(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_start_matches('/');
+    if trimmed.is_empty() { return None; }
+    let without_fragment = trimmed.split(['#', '?']).next().unwrap_or("").trim();
+    if without_fragment.is_empty() || without_fragment.contains("..") || without_fragment.contains('\\') {
+        return None;
+    }
+    Some(without_fragment.to_string())
+}
+
+fn manifest_action_path(manifest: &serde_json::Value, key: &str) -> Option<String> {
+    manifest.get(key)
+        .and_then(|v| v.get("default_popup").or_else(|| v.get("default_panel")))
+        .and_then(|v| v.as_str())
+        .and_then(sanitize_extension_rel_path)
+}
+
+fn manifest_icon_path(manifest: &serde_json::Value) -> Option<String> {
+    if let Some(icons) = manifest.get("icons").and_then(|v| v.as_object()) {
+        let mut keys: Vec<u32> = icons.keys().filter_map(|k| k.parse().ok()).collect();
+        keys.sort();
+        for k in keys.into_iter().rev() {
+            if let Some(p) = icons.get(&k.to_string()).and_then(|v| v.as_str()).and_then(sanitize_extension_rel_path) {
+                return Some(p);
+            }
+        }
+    }
+    for key in ["action", "browser_action"] {
+        if let Some(icon) = manifest.get(key).and_then(|v| v.get("default_icon")) {
+            match icon {
+                serde_json::Value::String(s) => if let Some(p) = sanitize_extension_rel_path(s) { return Some(p); },
+                serde_json::Value::Object(m) => {
+                    let mut keys: Vec<u32> = m.keys().filter_map(|k| k.parse().ok()).collect();
+                    keys.sort();
+                    for k in keys.into_iter().rev() {
+                        if let Some(p) = m.get(&k.to_string()).and_then(|v| v.as_str()).and_then(sanitize_extension_rel_path) {
+                            return Some(p);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn icon_data_url(dir: &Path, icon_rel: Option<&str>) -> Option<String> {
+    let rel = icon_rel?;
+    let bytes = std::fs::read(dir.join(rel)).ok()?;
+    if bytes.len() > 256 * 1024 { return None; }
+    let mime = match Path::new(rel).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "ico" => "image/x-icon",
+        _ => "application/octet-stream",
+    };
+    Some(format!("data:{};base64,{}", mime, BASE64_STANDARD.encode(bytes)))
+}
+
+fn read_manifest(dir: &Path) -> Option<(String, String, Option<String>, Option<String>, Option<String>)> {
     let raw = std::fs::read_to_string(dir.join("manifest.json")).ok()?;
     let manifest: serde_json::Value = serde_json::from_str(&raw).ok()?;
 
@@ -406,25 +619,16 @@ fn read_manifest(dir: &Path) -> Option<(String, String)> {
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "Расширение".to_string());
 
-    let raw_name = manifest
-        .get("name")
-        .and_then(|value| value.as_str())
-        .unwrap_or("")
-        .trim();
-    let name = if raw_name.is_empty() || raw_name.starts_with("__MSG_") {
-        fallback
-    } else {
-        raw_name.to_string()
-    };
-
-    let version = manifest
-        .get("version")
-        .and_then(|value| value.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-
-    Some((name, version))
+    let raw_name = manifest.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let name = if raw_name.is_empty() || raw_name.starts_with("__MSG_") { fallback } else { raw_name.to_string() };
+    let version = manifest.get("version").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let popup_path = manifest_action_path(&manifest, "action")
+        .or_else(|| manifest_action_path(&manifest, "browser_action"))
+        .or_else(|| manifest_action_path(&manifest, "page_action"));
+    let options_path = manifest.get("options_ui").and_then(|v| v.get("page")).and_then(|v| v.as_str()).and_then(sanitize_extension_rel_path)
+        .or_else(|| manifest.get("options_page").and_then(|v| v.as_str()).and_then(sanitize_extension_rel_path));
+    let icon_path = manifest_icon_path(&manifest);
+    Some((name, version, popup_path, options_path, icon_path))
 }
 
 fn scan_extension_folders(extensions_dir: &Path) -> Vec<ExtensionFolder> {
@@ -438,7 +642,7 @@ fn scan_extension_folders(extensions_dir: &Path) -> Vec<ExtensionFolder> {
         if !path.is_dir() {
             continue;
         }
-        let Some((name, version)) = read_manifest(&path) else {
+        let Some((name, version, popup_path, options_path, icon_path)) = read_manifest(&path) else {
             continue;
         };
         folders.push(ExtensionFolder {
@@ -446,6 +650,9 @@ fn scan_extension_folders(extensions_dir: &Path) -> Vec<ExtensionFolder> {
             path,
             name,
             version,
+            popup_path,
+            options_path,
+            icon_path,
         });
     }
 
@@ -511,7 +718,68 @@ fn collect_infos(extensions_dir: &Path, live: &[LiveExtension]) -> Vec<Extension
         .collect()
 }
 
+fn collect_installed_infos(extensions_dir: &Path, live: &[LiveExtension]) -> Vec<InstalledExtensionInfo> {
+    let registry = load_registry(extensions_dir);
+
+    scan_extension_folders(extensions_dir)
+        .into_iter()
+        .map(|folder| {
+            let record = registry.iter().find(|record| record.key == folder.key);
+            let mut id = record.map(|r| r.id.clone());
+            let mut enabled = true;
+            let mut status = if record.is_some() { "installed" } else { "pending" }.to_string();
+
+            if let Some(running) = live.iter().find(|ext| {
+                id.as_deref() == Some(ext.id.as_str()) || ext.name.eq_ignore_ascii_case(&folder.name)
+            }) {
+                id = Some(running.id.clone());
+                enabled = running.enabled;
+                status = if running.enabled { "active" } else { "disabled" }.to_string();
+            }
+
+            InstalledExtensionInfo {
+                id,
+                name: folder.name.clone(),
+                version: folder.version.clone(),
+                path: folder.path.to_string_lossy().into_owned(),
+                popup_path: folder.popup_path.clone(),
+                options_path: folder.options_path.clone(),
+                icon_data_url: icon_data_url(&folder.path, folder.icon_path.as_deref()),
+                enabled,
+                status,
+            }
+        })
+        .collect()
+}
+
+/// Scans the extensions folder and returns rich info for the extensions menu.
+/// Uses cached live extension IDs/names when available; no blocking WebView2 call.
+pub fn collect_installed_extensions_cached(
+    extensions_dir: &Path,
+    live: &[LiveExtension],
+) -> Vec<InstalledExtensionInfo> {
+    collect_installed_infos(extensions_dir, live)
+}
+
 /// Scans the extensions folder and returns what the home screen should show.
+pub fn collect_extensions_cached(
+    extensions_dir: &Path,
+    live: &[LiveExtension],
+) -> Vec<ExtensionInfo> {
+    collect_infos(extensions_dir, live)
+}
+
+/// Legacy: queries live extensions from webview. Prefer cached variants for UI responsiveness.
+pub fn collect_installed_extensions(
+    webview: Option<&tauri::Webview>,
+    extensions_dir: &Path,
+) -> Vec<InstalledExtensionInfo> {
+    let live = webview
+        .and_then(|webview| query_live_extensions(webview).ok())
+        .unwrap_or_default();
+    collect_installed_infos(extensions_dir, &live)
+}
+
 pub fn collect_extensions(
     webview: Option<&tauri::Webview>,
     extensions_dir: &Path,
@@ -520,6 +788,24 @@ pub fn collect_extensions(
         .and_then(|webview| query_live_extensions(webview).ok())
         .unwrap_or_default();
     collect_infos(extensions_dir, &live)
+}
+
+pub fn refresh_extension_cache(app: &AppHandle, shared: &SharedState) {
+    let (extensions_dir, label) = {
+        let guard = state::lock(shared);
+        (guard.extensions_directory.clone(), guard.active_webview_label())
+    };
+    let Some(label) = label else { return; };
+    let Some(webview) = app.get_webview(&label) else { return; };
+    match query_live_extensions(&webview) {
+        Ok(live) => {
+            let mut guard = state::lock(shared);
+            guard.extension_cache = live;
+        }
+        Err(error) => {
+            eprintln!("[lite-stream] extension cache refresh failed: {error}");
+        }
+    }
 }
 
 /// Creates the extensions folder with a short Russian README (idempotent).
@@ -767,6 +1053,78 @@ unsafe fn read_extension_list(
     Ok(extensions)
 }
 
+/// Opens or closes a compact extension popup webview in the top-right corner.
+pub fn toggle_extension_popup(
+    app: &AppHandle,
+    shared: &SharedState,
+    extension_id: &str,
+    popup_path: &str,
+) -> Result<bool, String> {
+    let ext_id = extension_id.trim();
+    let popup = sanitize_extension_rel_path(popup_path)
+        .ok_or_else(|| "Некорректный путь popup расширения".to_string())?;
+    if ext_id.is_empty() {
+        return Err("Не указан ID расширения".into());
+    }
+
+    // Toggle off if same popup is already open.
+    {
+        let mut guard = EXTENSION_POPUP_LABEL.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(label) = guard.take() {
+            if let Some(webview) = app.get_webview(&label) {
+                let _ = webview.close();
+            }
+            // If it was the same target, just close. We can't easily know target; close is enough for toggle.
+            // Caller can reopen by calling again; for simplicity treat any open popup as toggle-close.
+            return Ok(false);
+        }
+    }
+
+    let main = app
+        .get_window("main")
+        .ok_or_else(|| "Главное окно недоступно".to_string())?;
+    let size = main
+        .inner_size()
+        .map_err(|e| format!("Не удалось получить размер окна: {e}"))?;
+    let scale = main.scale_factor().unwrap_or(1.0).max(1.0);
+    let width = 360.0_f64;
+    let height = 520.0_f64;
+    let margin = 8.0_f64;
+    let panel_h = PANEL_HEIGHT;
+    let width_px = (width * scale).round() as u32;
+    let height_px = (height * scale).round() as u32;
+    let x_px = (size.width as i32 - width_px as i32 - (margin * scale).round() as i32).max(0);
+    let y_px = ((panel_h + margin) * scale).round() as i32;
+
+    let url = format!("chrome-extension://{ext_id}/{popup}");
+    let parsed = Url::parse(&url).map_err(|e| format!("Некорректный URL расширения: {e}"))?;
+
+    let label = format!("ext-popup-{}", WEBVIEW_SEQUENCE.fetch_add(1, Ordering::Relaxed));
+    let data_directory = state::lock(shared).data_directory.clone();
+
+    let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
+        .data_directory(data_directory)
+        .browser_extensions_enabled(true)
+        .additional_browser_args(BROWSER_ARGS)
+        .focused(true)
+        .auto_resize();
+
+    let webview = main
+        .add_child(
+            builder,
+            PhysicalPosition::new(x_px, y_px),
+            PhysicalSize::new(width_px, height_px),
+        )
+        .map_err(|e| format!("Не удалось открыть popup расширения: {e}"))?;
+
+    #[cfg(windows)]
+    apply_clean_user_agent(&webview);
+
+    let mut guard = EXTENSION_POPUP_LABEL.lock().unwrap_or_else(|p| p.into_inner());
+    *guard = Some(label);
+    Ok(true)
+}
+
 pub fn snapshot_and_emit(app: &AppHandle, shared: &SharedState) -> UiState {
     let snapshot = state::lock(shared).snapshot();
     emit_state(app, &snapshot);
@@ -829,13 +1187,13 @@ pub fn create_child(
         .ok_or_else(|| "main window is not available".to_string())?;
 
     let parsed_url = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
-    let (y, width, height) = child_bounds(&window, compact)?;
 
     let data_directory = {
         let shared = app.state::<SharedState>().inner().clone();
         let guard = state::lock(&shared);
         guard.data_directory.clone()
     };
+    let (y, width, height) = child_bounds(&window, compact)?;
 
     if let Err(error) = std::fs::create_dir_all(&data_directory) {
         return Err(format!("could not create the profile directory: {error}"));
@@ -850,6 +1208,8 @@ pub fn create_child(
     let title_app = app.clone();
     let popup_app = app.clone();
 
+    let init_script = format!("{}\n\n{}", INITIALIZATION_SCRIPT, sui_script());
+
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed_url))
         // One shared, persistent profile for every tab -> cookies, logins,
         // subscriptions and recommendations survive hibernation and restarts.
@@ -862,7 +1222,7 @@ pub fn create_child(
         // (Chromium 140+); only the JS-visible Edge/WebView2 tokens are
         // normalized by INITIALIZATION_SCRIPT below.
         .additional_browser_args(BROWSER_ARGS)
-        .initialization_script(INITIALIZATION_SCRIPT)
+        .initialization_script(&init_script)
         .focused(true)
         .on_page_load(move |_webview, payload| {
             update_tab_url(&url_app, tab_id, payload.url().to_string());
@@ -906,6 +1266,9 @@ pub fn create_child(
     };
     let (_, added) = sync_extensions(&webview, &extensions_directory);
     if added > 0 {
+        // Refresh cache after install so popup/options IDs become available.
+        let shared = app.state::<SharedState>().inner().clone();
+        refresh_extension_cache(app, &shared);
         if let Err(error) = webview.reload() {
             eprintln!("[lite-stream] could not reload after installing extensions: {error}");
         }

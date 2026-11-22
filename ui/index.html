@@ -113,6 +113,65 @@
     .icon-btn:active:not(:disabled) { transform: scale(0.96); }
     .icon-btn:disabled { opacity: 0.3; cursor: default; }
     .icon-btn.active { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
+    .icon-btn { position: relative; }
+    .icon-btn.available { color: var(--text-2); }
+    .icon-btn.available::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 1px var(--surface);
+    }
+    .icon-btn.menu-open { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
+
+    .ext-modal {
+      width: min(460px, 100%);
+      max-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      background: #0B0C0E;
+      transform: translateY(8px) scale(0.995);
+      transition: transform 180ms var(--ease);
+    }
+    .overlay.open .ext-modal { transform: none; }
+    .ext-modal-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.015);
+    }
+    .ext-modal-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.2px; color: var(--text); }
+    .ext-modal-head p { margin: 3px 0 0; color: var(--text-3); font-size: 10px; }
+    .ext-modal-body { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+    .ext-block { padding: 13px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; background: rgba(255,255,255,0.012); }
+    .ext-block h3 { margin: 0 0 10px; color: var(--text-2); font-size: 10.5px; font-weight: 650; letter-spacing: 0.5px; text-transform: uppercase; }
+    .ext-studio-card { display: flex; gap: 12px; align-items: flex-start; }
+    .ext-studio-icon { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; display: grid; place-items: center; background: #111215; border: 1px solid rgba(255,255,255,0.08); color: var(--text-2); }
+    .ext-studio-icon svg { width: 18px; height: 18px; }
+    .ext-studio-copy { min-width: 0; flex: 1; }
+    .ext-studio-copy b { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+    .ext-studio-copy p { margin: 4px 0 10px; font-size: 11px; line-height: 1.5; color: var(--text-3); }
+    .ext-list-modal { display: flex; flex-direction: column; gap: 6px; }
+    .ext-row {
+      display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: #111215;
+    }
+    .ext-row-icon { width: 28px; height: 28px; flex: 0 0 auto; border-radius: 7px; display: grid; place-items: center; background: #0B0C0E; border: 1px solid rgba(255,255,255,0.08); color: var(--text-2); overflow: hidden; }
+    .ext-row-icon img { width: 18px; height: 18px; object-fit: contain; }
+    .ext-row-icon svg { width: 14px; height: 14px; }
+    .ext-row-copy { min-width: 0; flex: 1; }
+    .ext-row-name { display: block; font-size: 12px; font-weight: 550; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ext-row-meta { display: block; margin-top: 2px; font-size: 10px; color: var(--text-3); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .ext-row .ghost-btn { height: 28px; padding: 0 10px; font-size: 10.5px; }
+    .ext-modal-foot {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.015);
+    }
+    .ext-modal-foot .left { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ext-empty { padding: 10px 0 2px; color: var(--text-3); font-size: 11px; line-height: 1.45; }
 
     .platform-dock {
       position: relative;
@@ -1198,6 +1257,9 @@
 
     <div class="tb-cluster tb-actions">
       <span class="hib-dot" id="hibDot" title="Нет активной вкладки" aria-label="Состояние гибернации"></span>
+      <button class="icon-btn" id="uiStudioBtn" title="Редактор интерфейса Twitch / YouTube" aria-label="Редактор интерфейса Twitch / YouTube" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 7 11 4H4a1 1 0 0 0-1 1v3l3 3"/><path d="m10 17 3 3h7a1 1 0 0 0 1-1v-3l-3-3"/><path d="m14 7 3-3h3v3l-3 3"/><path d="m10 17-3 3H4v-3l3-3"/><path d="m14 7-4 4 0 2 4 4 2 0 4-4 0-2-4-4Z"/></svg>
+      </button>
       <button class="icon-btn" id="tokenBtn" title="Сессия Twitch: импорт auth-token" aria-label="Сессия Twitch">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="16.5" r="3.5"/><path d="M10 14 20 4"/><path d="M16 4l4 4"/><path d="M14 6l4 4"/></svg>
       </button>
@@ -1215,6 +1277,44 @@
       </button>
     </div>
   </header>
+
+  <div class="overlay" id="extOverlay" hidden>
+    <section class="ext-modal" id="extModal" role="dialog" aria-modal="true" aria-labelledby="extModalTitle">
+      <header class="ext-modal-head">
+        <div>
+          <h2 id="extModalTitle">Расширения</h2>
+          <p>Встроенные инструменты и расширения WebView2</p>
+        </div>
+        <button class="icon-btn" id="extModalClose" title="Закрыть (Esc)" aria-label="Закрыть окно расширений">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="ext-modal-body">
+        <section class="ext-block" aria-labelledby="extStudioTitle">
+          <h3 id="extStudioTitle">Встроенный инструмент</h3>
+          <div class="ext-studio-card">
+            <div class="ext-studio-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7 11 4H4a1 1 0 0 0-1 1v3l3 3"/><path d="m10 17 3 3h7a1 1 0 0 0 1-1v-3l-3-3"/><path d="m14 7 3-3h3v3l-3 3"/><path d="m10 17-3 3H4v-3l3-3"/><path d="m14 7-4 4 0 2 4 4 2 0 4-4 0-2-4-4Z"/></svg></div>
+            <div class="ext-studio-copy">
+              <b>Stream UI Studio</b>
+              <p>Визуальный редактор интерфейса, тем и прозрачного чата для Twitch / YouTube</p>
+              <button class="btn-primary" id="extOpenStudioBtn" type="button">Открыть редактор</button>
+            </div>
+          </div>
+        </section>
+        <section class="ext-block" aria-labelledby="extInstalledTitle">
+          <h3 id="extInstalledTitle">Установленные расширения WebView2</h3>
+          <div class="ext-list-modal" id="extModalList"></div>
+        </section>
+      </div>
+      <footer class="ext-modal-foot">
+        <div class="left">
+          <button class="ghost-btn" id="extModalOpenFolder" type="button">Открыть папку расширений</button>
+          <button class="ghost-btn" id="extModalSettings" type="button">Перейти в Настройки</button>
+        </div>
+        <button class="btn-ghost" id="extModalDone" type="button">Готово</button>
+      </footer>
+    </section>
+  </div>
 
   <main id="stage">
     <section class="home" id="homeView">
@@ -1547,6 +1647,14 @@
         tabGlider: document.getElementById("tabGlider"),
         dockGlider: document.getElementById("dockGlider"),
         hibDot: document.getElementById("hibDot"),
+        uiStudioBtn: document.getElementById("uiStudioBtn"),
+        extOverlay: document.getElementById("extOverlay"),
+        extModalClose: document.getElementById("extModalClose"),
+        extModalDone: document.getElementById("extModalDone"),
+        extModalList: document.getElementById("extModalList"),
+        extOpenStudioBtn: document.getElementById("extOpenStudioBtn"),
+        extModalOpenFolder: document.getElementById("extModalOpenFolder"),
+        extModalSettings: document.getElementById("extModalSettings"),
         tokenBtn: document.getElementById("tokenBtn"),
         settingsBtn: document.getElementById("settingsBtn"),
         sleep: document.getElementById("sleepBtn"),
@@ -1629,7 +1737,9 @@
       let twitchSession = null;
       let resumeExpanded = false;
       let settingsOpen = false;
+      let extModalOpen = false;
       let hiddenWebview = false;
+      let extModalItems = [];
       let toastTimer = 0;
       let busyTimer = 0;
       let metricsBusy = false;
@@ -2290,6 +2400,15 @@
 
         const active = activeTab();
         const awake = !!active && !active.sleeping;
+        const studioSite = active ? siteClass(active.url) : "";
+        const studioSupported = !!active && (studioSite === "yt" || studioSite === "tw");
+        if (el.uiStudioBtn) {
+          el.uiStudioBtn.disabled = false;
+          el.uiStudioBtn.classList.toggle("available", studioSupported);
+          const studioTitle = "Расширения и редактор интерфейса";
+          el.uiStudioBtn.title = studioTitle;
+          el.uiStudioBtn.setAttribute("aria-label", studioTitle);
+        }
 
         if (el.back) el.back.disabled = !awake;
         if (el.reload) el.reload.disabled = !awake;
@@ -2374,7 +2493,135 @@
         window.setTimeout(() => refreshExtensions(false), 700);
       }
 
+      function extIconPlaceholder() {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 7.5 12 2 3.5 7.5v9L12 22l8.5-5.5v-9Z"/><path d="M12 22v-9.5"/><path d="M20.5 7.5 12 12.5 3.5 7.5"/></svg>';
+      }
+
+      function studioSupportedOnActive() {
+        const active = activeTab();
+        const site = active ? siteClass(active.url) : "";
+        return !!active && !active.sleeping && (site === "yt" || site === "tw");
+      }
+
+      let extModalLoading = false;
+
+      function renderExtModal() {
+        const list = el.extModalList;
+        if (!list) return;
+        list.replaceChildren();
+        const supported = studioSupportedOnActive();
+        if (el.extOpenStudioBtn) {
+          el.extOpenStudioBtn.disabled = !supported;
+          el.extOpenStudioBtn.title = supported ? "Открыть Stream UI Studio" : "Доступно на активной вкладке Twitch / YouTube";
+        }
+
+        if (!extModalItems.length) {
+          const empty = document.createElement("div");
+          empty.className = "ext-empty";
+          empty.textContent = extModalLoading ? "Загрузка расширений..." : "Установленные unpacked-расширения не найдены. Добавьте папки с manifest.json в каталог расширений.";
+          list.appendChild(empty);
+          return;
+        }
+
+        for (const ext of extModalItems) {
+          const row = document.createElement("div");
+          row.className = "ext-row";
+          const icon = ext.iconDataUrl ? `<img src="${ext.iconDataUrl}" alt="" />` : extIconPlaceholder();
+          const meta = [ext.version ? `v${ext.version}` : "", ext.enabled ? "" : "отключено"].filter(Boolean).join(" · ") || "WebView2";
+          row.innerHTML = `<div class="ext-row-icon" aria-hidden="true">${icon}</div><div class="ext-row-copy"><span class="ext-row-name"></span><span class="ext-row-meta"></span></div>`;
+          row.querySelector(".ext-row-name").textContent = ext.name || "Расширение";
+          row.querySelector(".ext-row-meta").textContent = meta;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ghost-btn";
+          const hasPopup = !!(ext.popupPath && ext.id);
+          const hasOptions = !!ext.optionsPath;
+          btn.textContent = hasPopup ? "Открыть" : hasOptions ? "Настройки" : "Нет UI";
+          btn.disabled = !hasPopup && !hasOptions;
+          btn.addEventListener("click", async () => {
+            await closeExtModal();
+            if (!invoke) return;
+            try {
+              setBusy(true);
+              if (hasPopup) {
+                await invoke("open_extension_popup", { extensionId: ext.id, popupPath: ext.popupPath });
+              } else if (ext.optionsPath && ext.id) {
+                await openTab(`chrome-extension://${ext.id}/${ext.optionsPath}`);
+              } else if (ext.optionsPath) {
+                await openTab(ext.optionsPath);
+              }
+            } catch (error) { showToast(errorText(error)); }
+            finally { setBusy(false); }
+          });
+          row.appendChild(btn);
+          list.appendChild(row);
+        }
+      }
+
+      async function refreshExtModalItems(refresh = false) {
+        if (!invoke) { extModalItems = []; extModalLoading = false; return; }
+        extModalLoading = true;
+        try {
+          extModalItems = await invoke("list_installed_extensions", { refresh }) || [];
+        } catch (_) {
+          if (!refresh) extModalItems = extModalItems || [];
+        } finally {
+          extModalLoading = false;
+        }
+      }
+
+      function openExtModal() {
+        if (settingsOpen) { closeSettings(); }
+        if (extModalOpen) return;
+        extModalOpen = true;
+        el.extOverlay.hidden = false;
+        document.body.classList.add("settings-open");
+        el.uiStudioBtn.classList.add("menu-open");
+
+        // 1) Show modal immediately (0ms perceived delay).
+        renderExtModal();
+        requestAnimationFrame(() => el.extOverlay.classList.add("open"));
+
+        // 2) Hide active child webview via overlay mechanism, non-blocking for paint.
+        const active = activeTab();
+        if (active && !active.sleeping && invoke) {
+          hiddenWebview = true;
+          invoke("set_overlay_active", { active: true }).catch(() => { hiddenWebview = false; });
+        } else {
+          hiddenWebview = false;
+        }
+
+        // 3) Fetch extension list after the modal is painted.
+        setTimeout(async () => {
+          if (!extModalOpen) return;
+          await refreshExtModalItems(false);
+          if (extModalOpen) renderExtModal();
+        }, 0);
+
+        setTimeout(() => el.extModalClose?.focus(), 0);
+      }
+
+      async function closeExtModal() {
+        if (!extModalOpen) return;
+        extModalOpen = false;
+        el.extOverlay.classList.remove("open");
+        document.body.classList.remove("settings-open");
+        el.uiStudioBtn.classList.remove("menu-open");
+        if (invoke) invoke("close_extension_popup").catch(() => {});
+
+        const restore = hiddenWebview;
+        hiddenWebview = false;
+        setTimeout(() => { el.extOverlay.hidden = true; }, 180);
+        if (restore && invoke && !settingsOpen) {
+          try {
+            const next = await invoke("set_overlay_active", { active: false });
+            if (next) applyState(next);
+          } catch (_) {}
+        }
+      }
+
       async function openSettings(focusToken) {
+        if (extModalOpen) await closeExtModal();
         if (settingsOpen) {
           if (focusToken) el.tokenInput.focus();
           return;
@@ -2421,7 +2668,7 @@
           el.settingsOverlay.hidden = true;
         }, 180);
 
-        if (restore && invoke) {
+        if (restore && invoke && !extModalOpen) {
           try {
             const next = await invoke("set_webview_visible", { visible: true });
             if (next) applyState(next);
@@ -2433,6 +2680,11 @@
       function bindEvents() {
         el.back.addEventListener("click", () => run("go_back"));
         el.reload.addEventListener("click", () => run("reload"));
+        el.uiStudioBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (extModalOpen) { await closeExtModal(); return; }
+          await openExtModal();
+        });
         el.sleep.addEventListener("click", () => {
           const active = activeTab();
           if (!active) return;
@@ -2444,6 +2696,31 @@
         el.tokenBtn.addEventListener("click", () => openSettings(true));
         el.settingsBtn.addEventListener("click", () => openSettings(false));
         el.homeSettingsBtn.addEventListener("click", () => openSettings(false));
+        el.extModalClose.addEventListener("click", () => closeExtModal());
+        el.extModalDone.addEventListener("click", () => closeExtModal());
+        el.extOverlay.addEventListener("click", (e) => { if (e.target === el.extOverlay) closeExtModal(); });
+        el.extOpenStudioBtn.addEventListener("click", async () => {
+          if (!studioSupportedOnActive()) return;
+          await closeExtModal();
+          try {
+            setBusy(true);
+            await invoke("toggle_ui_studio");
+          } catch (error) { showToast(errorText(error)); }
+          finally { setBusy(false); }
+        });
+        el.extModalOpenFolder.addEventListener("click", async () => {
+          if (!invoke) return;
+          try { await invoke("open_extensions_folder"); }
+          catch (error) { showToast(errorText(error)); }
+        });
+        el.extModalSettings.addEventListener("click", async () => {
+          await closeExtModal();
+          await openSettings(false);
+          window.setTimeout(() => {
+            const sec = Array.from(document.querySelectorAll('.set-card-title h3')).find(h => /WebView2/i.test(h.textContent || ''));
+            if (sec) sec.closest('.set-card')?.scrollIntoView({ block: 'start' });
+          }, 220);
+        });
 
         document.querySelectorAll(".dock-btn[data-url], .platform-card[data-url]").forEach((node) => {
           node.addEventListener("click", () => openTab(node.dataset.url));
@@ -2637,6 +2914,11 @@
           const key = event.key.toLowerCase();
 
           if (event.key === "Escape") {
+            if (extModalOpen) {
+              event.preventDefault();
+              closeExtModal();
+              return;
+            }
             if (settingsOpen) {
               event.preventDefault();
               closeSettings();

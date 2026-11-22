@@ -42,6 +42,8 @@
 | **Авторизация** | Нативный User-Agent системного WebView2 с актуальным Chromium + постоянный профиль; Edge/WebView2-токены и Client Hints нормализуются до Google Chrome |
 | **Импорт сессии Twitch** | В настройках: вставка `auth-token` (или строки cookie) с маскированием, статусом/датой и превью имён cookie; значение токена не логируется и не сохраняется в `localStorage` (только факт импорта/дата/имена cookie), cookie уходят в профиль WebView2 |
 | **Расширения WebView2** | Поддерживаются распакованные Chrome/Edge-расширения из постоянной папки `extensions`; список/обновление и открытие папки — в настройках, установка идёт через профиль WebView2 с дедупликацией |
+| **Расширения и Stream UI Studio** | Кнопка-пазл открывает выпадающее меню расширений: встроенный `Stream UI Studio` (toggle в активном Twitch/YouTube WebView) + установленные unpacked-расширения WebView2 с иконкой/версией/popup; popup открывается в компактном дочернем WebView. |
+| **Stream UI Studio** | Кнопка-пазл на верхней панели открывает/закрывает встроенный редактор интерфейса Twitch/YouTube в активном дочернем WebView; скрипты инжектируются нативно при загрузке страниц, без `default_popup` и с фолбэком хранилища на `localStorage` (`sui.*`) |
 | **Попапы** | `target="_blank"` и OAuth-попапы открываются как обычные вкладки в том же профиле |
 
 ---
@@ -72,6 +74,7 @@ WebView** активной вкладки, который располагает
   ниже панели без наложений. Оверлей настроек при необходимости временно скрывает
   активный дочерний WebView через `set_webview_visible`.
 * В один момент существует **максимум один** дочерний WebView.
+* Кнопка-пазл открывает меню расширений: пункт `Stream UI Studio` вызывает `toggle_ui_studio` (`window.__SUI_TOGGLE_PANEL__()` в активном Twitch/YouTube WebView), пункты установленных расширений вызывают `open_extension_popup` или открывают `options_page` в новой вкладке.
 
 Жизненный цикл вкладки:
 
@@ -364,6 +367,7 @@ WebView2:
 | Циклическое переключение вкладок | `cycle_tab` / `cycle_tab_sync` в `src-tauri/src/commands.rs`, регистрация в `src-tauri/src/lib.rs` |
 | Скрытие/показ дочернего WebView (для оверлеев) | `set_webview_visible` в `src-tauri/src/commands.rs`, вызов из `ui/index.html` |
 | Живая телеметрия RAM/CPU/Proc | `get_runtime_stats` в `src-tauri/src/commands.rs`, замер в `src-tauri/src/metrics.rs` |
+| Меню расширений / Stream UI Studio | `SUI_*`/`stream_ui_studio_script`, `collect_installed_extensions`, `toggle_extension_popup` в `src-tauri/src/browser.rs`; команды `toggle_ui_studio`, `list_installed_extensions`, `open_extension_popup`, `close_extension_popup` в `src-tauri/src/commands.rs`; меню `#extMenu`/`uiStudioBtn` в `ui/index.html`; ресурсы `src-tauri/resources/stream-ui-studio/*` |
 | Аргументы WebView2, сетевой User-Agent и JS-нормализация Client Hints | `BROWSER_ARGS`, `apply_clean_user_agent`, `INITIALIZATION_SCRIPT` в `src-tauri/src/browser.rs` |
 | Расширения: сканирование, установка, дедупликация, список | `sync_extensions`, `add_extensions`, `collect_extensions` в `src-tauri/src/browser.rs`; команды `open_extensions_folder`, `list_extensions` в `src-tauri/src/commands.rs` |
 | Импорт Twitch-сессии, домен/флаги/срок cookie | `import_twitch_token` в `src-tauri/src/commands.rs`, `install_twitch_cookies`/`set_twitch_cookies` в `src-tauri/src/browser.rs` |

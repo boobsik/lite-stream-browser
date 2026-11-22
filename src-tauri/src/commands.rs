@@ -450,22 +450,16 @@ pub fn open_extensions_folder(app: AppHandle) -> Result<String, String> {
     Ok(directory.to_string_lossy().into_owned())
 }
 
-/// Returns unpacked extensions found in the extensions folder, merged with the
-/// extensions currently loaded by the active WebView2 profile (if any).
+/// Returns unpacked extensions found in the extensions folder, merged with cached
+/// live extension metadata when available.
 #[tauri::command]
 pub async fn list_extensions(app: AppHandle) -> Result<Vec<browser::ExtensionInfo>, String> {
     let shared = shared_state(&app);
     let directory = extensions_directory(&shared);
     browser::prepare_extensions_directory(&directory)?;
-
-    let webview = {
-        let guard = state::lock(&shared);
-        guard
-            .active_webview_label()
-            .and_then(|label| app.get_webview(&label))
-    };
-
-    Ok(browser::collect_extensions(webview.as_ref(), &directory))
+    browser::refresh_extension_cache(&app, &shared);
+    let live = state::lock(&shared).extension_cache.clone();
+    Ok(browser::collect_extensions_cached(&directory, &live))
 }
 
 // ---------------------------------------------------------------------------
@@ -542,5 +536,74 @@ pub async fn set_webview_visible(app: AppHandle, visible: bool) -> Result<UiStat
 #[tauri::command]
 pub fn get_runtime_stats() -> crate::metrics::RuntimeStats {
     crate::metrics::sample()
+}
+
+/// Toggles the Stream UI Studio panel in the active child WebView.
+/// Returns `true` when the page reports a supported platform and toggle hook.
+#[tauri::command]
+pub async fn toggle_ui_studio(app: AppHandle) -> Result<bool, String> {
+    let shared = shared_state(&app);
+    let label = state::lock(&shared)
+        .active_webview_label()
+        .ok_or_else(|| "Нет активной вкладки".to_string())?;
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| "WebView вкладки недоступен".to_string())?;
+
+    let script = r#"(async () => {
+      try {
+        if (typeof window.__SUI_TOGGLE_PANEL__ === 'function') {
+          return !!window.__SUI_TOGGLE_PANEL__();
+        }
+        return false;
+      } catch (_) { return false; }
+    })()"#;
+
+    webview
+        .eval(script)
+        .map_err(|error| format!("Не удалось открыть редактор интерфейса: {error}"))?;
+    Ok(true)
+}
+
+/// Lists installed unpacked extensions with popup/options/icon metadata.
+/// Fast path: reads manifests/icons from disk and uses cached live extension IDs.
+/// Pass refresh=true to query WebView2 for live IDs (slow; use on explicit refresh).
+#[tauri::command]
+pub fn list_installed_extensions(app: AppHandle, refresh: Option<bool>) -> Result<Vec<browser::InstalledExtensionInfo>, String> {
+    let shared = shared_state(&app);
+    let extensions_dir = {
+        let app_state = state::lock(&shared);
+        app_state.extensions_directory.clone()
+    };
+    browser::prepare_extensions_directory(&extensions_dir)?;
+
+    if refresh.unwrap_or(false) {
+        browser::refresh_extension_cache(&app, &shared);
+    }
+
+    let live = {
+        let app_state = state::lock(&shared);
+        app_state.extension_cache.clone()
+    };
+    Ok(browser::collect_installed_extensions_cached(&extensions_dir, &live))
+}
+
+/// Opens an extension popup in a compact child webview, or closes it if open.
+#[tauri::command]
+pub fn open_extension_popup(app: AppHandle, extension_id: String, popup_path: String) -> Result<bool, String> {
+    let shared = shared_state(&app);
+    browser::toggle_extension_popup(&app, &shared, &extension_id, &popup_path)
+}
+
+/// Closes the extension popup webview if it is open.
+#[tauri::command]
+pub fn close_extension_popup(app: AppHandle) -> bool {
+    browser::close_extension_popup(&app)
+}
+
+/// Overlay visibility for modal dialogs (settings/extensions). Hides/shows active child webview.
+#[tauri::command]
+pub async fn set_overlay_active(app: AppHandle, active: bool) -> Result<UiState, String> {
+    set_webview_visible(app, !active).await
 }
 

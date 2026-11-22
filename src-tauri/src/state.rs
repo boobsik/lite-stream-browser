@@ -52,6 +52,8 @@ pub struct AppState {
     pub data_directory: PathBuf,
     /// Unpacked Chrome/Edge extensions live next to the browser profile.
     pub extensions_directory: PathBuf,
+    /// Cached live WebView2 extension metadata (id/name/enabled) to avoid blocking UI.
+    pub extension_cache: Vec<crate::browser::LiveExtension>,
 }
 
 impl AppState {
@@ -64,6 +66,7 @@ impl AppState {
             always_on_top: false,
             data_directory,
             extensions_directory,
+            extension_cache: Vec::new(),
         }
     }
 

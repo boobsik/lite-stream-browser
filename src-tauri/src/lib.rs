@@ -135,6 +135,11 @@ pub fn run() {
             commands::open_extensions_folder,
             commands::list_extensions,
             commands::get_runtime_stats,
+            commands::toggle_ui_studio,
+            commands::list_installed_extensions,
+            commands::open_extension_popup,
+            commands::close_extension_popup,
+            commands::set_overlay_active,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lite Stream Browser");
