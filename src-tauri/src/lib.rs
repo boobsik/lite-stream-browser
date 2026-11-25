@@ -66,9 +66,14 @@ pub fn run() {
                             eprintln!("[lite-stream] compact mode toggle failed: {error}");
                         }
                     } else if shortcut == &handler_next_tab {
-                        if let Err(error) = commands::cycle_tab_sync(app, 1) {
-                            eprintln!("[lite-stream] tab switch failed: {error}");
-                        }
+                        // URL snapshot does a short WebView round-trip; keep it
+                        // off the UI thread that dispatches global shortcuts.
+                        let app = app.clone();
+                        std::thread::spawn(move || {
+                            if let Err(error) = commands::cycle_tab_sync(&app, 1) {
+                                eprintln!("[lite-stream] tab switch failed: {error}");
+                            }
+                        });
                     }
                 })
                 .build(),

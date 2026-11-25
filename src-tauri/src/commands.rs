@@ -310,20 +310,21 @@ pub async fn reload(app: AppHandle) -> Result<UiState, String> {
 pub async fn hibernate(app: AppHandle) -> Result<UiState, String> {
     let shared = shared_state(&app);
 
-    let label = {
+    let (id, label) = {
         let mut guard = state::lock(&shared);
         let Some(id) = guard.active else {
             drop(guard);
             return Ok(browser::snapshot_and_emit(&app, &shared));
         };
-        guard.tab_mut(id).and_then(|tab| {
+        let label = guard.tab_mut(id).and_then(|tab| {
             tab.sleeping = true;
             tab.webview_label.take()
-        })
+        });
+        (id, label)
     };
 
     if let Some(label) = label {
-        browser::close_webview(&app, &label);
+        browser::sleep_webview(&app, &shared, id, label);
     }
 
     Ok(browser::snapshot_and_emit(&app, &shared))
@@ -335,21 +336,22 @@ pub async fn hibernate(app: AppHandle) -> Result<UiState, String> {
 pub async fn show_home(app: AppHandle) -> Result<UiState, String> {
     let shared = shared_state(&app);
 
-    let label = {
+    let (id, label) = {
         let mut guard = state::lock(&shared);
         let Some(id) = guard.active else {
             drop(guard);
             return Ok(browser::snapshot_and_emit(&app, &shared));
         };
         guard.active = None;
-        guard.tab_mut(id).and_then(|tab| {
+        let label = guard.tab_mut(id).and_then(|tab| {
             tab.sleeping = true;
             tab.webview_label.take()
-        })
+        });
+        (id, label)
     };
 
     if let Some(label) = label {
-        browser::close_webview(&app, &label);
+        browser::sleep_webview(&app, &shared, id, label);
     }
 
     Ok(browser::snapshot_and_emit(&app, &shared))

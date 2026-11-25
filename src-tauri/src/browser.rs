@@ -1557,11 +1557,65 @@ pub fn close_webview(app: &AppHandle, label: &str) {
     }
 }
 
+fn is_youtube_watch(url: &Url) -> bool {
+    let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+    matches!(
+        host.as_str(),
+        "youtube.com" | "www.youtube.com" | "m.youtube.com" | "music.youtube.com"
+    ) && url.path() == "/watch"
+}
+
+/// Reads the address the user actually sees. `on_page_load` only sees real
+/// navigations, so Twitch/YouTube SPA changes never reach `update_tab_url`.
+/// For YouTube we first write the player position into the URL: `eval` cannot
+/// return a value, but `history.replaceState` makes the position visible to
+/// `Webview::url()`.
+fn live_webview_url(app: &AppHandle, label: &str) -> Option<String> {
+    let webview = app.get_webview(label)?;
+
+    if webview
+        .url()
+        .ok()
+        .as_ref()
+        .map(is_youtube_watch)
+        .unwrap_or(false)
+    {
+        let script = r#"(function () {
+          try {
+            var video = document.querySelector('video');
+            if (!video) return;
+            var seconds = Math.max(0, Math.floor(Number(video.currentTime) || 0));
+            if (!Number.isFinite(seconds)) return;
+            var url = new URL(location.href);
+            url.searchParams.set('t', seconds + 's');
+            history.replaceState(history.state, '', url.toString());
+          } catch (_) {}
+        })()"#;
+        let _ = webview.eval(script);
+        // Give the renderer a moment to process the script before reading URL.
+        std::thread::sleep(Duration::from_millis(60));
+    }
+
+    webview.url().ok().map(|url| url.to_string())
+}
+
+/// Saves the live address of a tab before its renderer is destroyed.
+/// Callers must not hold the state lock here: WebView2 calls may block.
+pub fn sleep_webview(app: &AppHandle, shared: &SharedState, tab_id: u64, label: String) {
+    if let Some(url) = live_webview_url(app, &label) {
+        let mut guard = state::lock(shared);
+        if let Some(tab) = guard.tab_mut(tab_id) {
+            tab.url = url;
+        }
+    }
+    close_webview(app, &label);
+}
+
 /// Activates a tab. Any previously active WebView is destroyed first (its
 /// renderer is unloaded from RAM) and the target tab's WebView is created
 /// lazily from its saved URL.
 pub fn activate_tab(app: &AppHandle, shared: &SharedState, id: u64) -> Result<UiState, String> {
-    let (close_labels, url, compact) = {
+    let (sleeping, url, compact) = {
         let mut guard = state::lock(shared);
 
         let Some(index) = guard.tabs.iter().position(|tab| tab.id == id) else {
@@ -1581,14 +1635,14 @@ pub fn activate_tab(app: &AppHandle, shared: &SharedState, id: u64) -> Result<Ui
             }
         }
 
-        let mut close_labels = Vec::new();
+        let mut sleeping = Vec::new();
 
         // Hibernate whichever tab is currently on screen.
         if let Some(previous_id) = guard.active {
             if previous_id != id {
                 if let Some(previous) = guard.tab_mut(previous_id) {
                     if let Some(label) = previous.webview_label.take() {
-                        close_labels.push(label);
+                        sleeping.push((previous_id, label));
                     }
                     previous.sleeping = true;
                 }
@@ -1597,17 +1651,17 @@ pub fn activate_tab(app: &AppHandle, shared: &SharedState, id: u64) -> Result<Ui
 
         // Defensive: never leave two live WebViews for the same tab.
         if let Some(label) = guard.tabs[index].webview_label.take() {
-            close_labels.push(label);
+            sleeping.push((id, label));
         }
 
         let url = guard.tabs[index].url.clone();
         let compact = guard.compact;
-        (close_labels, url, compact)
+        (sleeping, url, compact)
     };
 
     // Lock is released: closing/creating WebViews may block on WebView2.
-    for label in close_labels {
-        close_webview(app, &label);
+    for (tab_id, label) in sleeping {
+        sleep_webview(app, shared, tab_id, label);
     }
 
     match create_child(app, id, &url, compact) {
