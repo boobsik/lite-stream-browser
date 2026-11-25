@@ -45,6 +45,97 @@
 | **Расширения и Stream UI Studio** | Кнопка-пазл открывает выпадающее меню расширений: встроенный `Stream UI Studio` (toggle в активном Twitch/YouTube WebView) + установленные unpacked-расширения WebView2 с иконкой/версией/popup; popup открывается в компактном дочернем WebView. |
 | **Stream UI Studio** | Кнопка-пазл на верхней панели открывает/закрывает встроенный редактор интерфейса Twitch/YouTube в активном дочернем WebView; скрипты инжектируются нативно при загрузке страниц, без `default_popup` и с фолбэком хранилища на `localStorage` (`sui.*`) |
 | **Попапы** | `target="_blank"` и OAuth-попапы открываются как обычные вкладки в том же профиле |
+| **Chrome Native Messaging** | `chrome.runtime.connectNative` / `sendNativeMessage` работают в WebView2: хост ищется в реестре Chrome/Edge/Firefox, запускается как процесс с piped stdio, кадры длина+JSON передаются через Tauri-команды и события `native-message:<port>`; используется Chatterino+ |
+
+---
+
+## Chrome Native Messaging (Chatterino+)
+
+WebView2 умеет загружать unpacked-расширения, но не реализует
+`chrome.runtime.connectNative` / `sendNativeMessage`. Поэтому в каждый дочерний
+WebView (вкладки YouTube/Twitch и popup расширений) инжектится полифилл, который
+разговаривает с Rust через `window.__TAURI_INTERNALS__.invoke`:
+
+```js
+const port = chrome.runtime.connectNative("com.chatterino.native");
+port.onMessage.addListener((message) => console.log(message));
+port.postMessage({ type: "hello" });
+port.disconnect();
+
+// или одноразово
+chrome.runtime.sendNativeMessage("com.chatterino.native", { type: "ping" }, (reply) => {});
+```
+
+### Как находится хост
+
+Chatterino и Chatterino+ сами регистрируют свои хосты в реестре для Chrome и
+Edge — достаточно установить и один раз запустить нужный клиент,
+дополнительная настройка не нужна. Имена хостов:
+
+* `com.chatterino.chatterino` — Chatterino
+* `id.eblo.chatterino_plus` — Chatterino+
+
+`native_connect` читает значение по умолчанию из первых существующих ключей:
+
+* `HKCU\SOFTWARE\Google\Chrome\NativeMessagingHosts\<host>`
+* `HKLM\SOFTWARE\Google\Chrome\NativeMessagingHosts\<host>`
+* `HKCU\SOFTWARE\Microsoft\Edge\NativeMessagingHosts\<host>`
+* `HKCU\SOFTWARE\Mozilla\NativeMessagingHosts\<host>`
+
+Имя `<host>` — это значение, которое расширение передаёт в
+`chrome.runtime.connectNative(hostName)`. Код принимает любое имя, подходящее
+под ограничение на токен.
+
+Значение ключа указывает на JSON-манифест хоста. Мост читает из него только
+поле `path`: оно обязательно, а относительный путь считается от каталога
+манифеста. Запускается найденный исполняемый файл без консоли; ему передаются
+аргументы в форме, в какой их передаёт Chrome: `--parent-window=0` и `origin`
+страницы. Поля `name`, `type` и `allowed_origins` мост не читает — они нужны
+самому хосту и браузеру при регистрации.
+
+Код не создаёт манифест и не пишет реестр: регистрация хоста — задача
+установщика Chatterino или пользователя по документации хоста.
+
+### Протокол и события
+
+* `native_connect({ portId, hostName, origin })` — запускает хост, привязывает его
+  к текущему WebView и возвращает событие `native-message:<portId>` c
+  `{ type: "connected" }`.
+* `native_post_message({ portId, payloadJson })` — пишет в stdin кадр
+  `u32 LE length` + UTF-8 JSON.
+* `native_disconnect({ portId })` — закрывает stdin и завершает процесс.
+* Фоновый поток читает stdout, разбирает кадры и отправляет в WebView события
+  `{ type: "message", message }`, `{ type: "error", error }` и
+  `{ type: "disconnected" }`.
+
+Максимальный размер кадра — 16 МБ. Хост автоматически завершается, когда
+вкладка уходит в сон, popup закрывается или приложение выходит.
+
+### Изолированный мир расширений
+
+Content script расширения живёт в изолированном мире JavaScript и не видит
+`window.chrome` основной страницы. Для него есть опциональный мост через
+`window.postMessage` с теми же тремя операциями:
+
+```js
+const id = "chatterino-" + Math.random();
+window.postMessage({ __lsbNativeBridge: true, type: "connect", hostName: "com.chatterino.native", requestId: id }, "*");
+window.postMessage({ __lsbNativeBridge: true, type: "post", requestId: id, message: { type: "hello" } }, "*");
+window.addEventListener("message", (e) => {
+  if (e.data?.__lsbNativeBridge && e.data.requestId === id && e.data.type === "message") {
+    console.log(e.data.message);
+  }
+});
+```
+
+### Права доступа
+
+`src-tauri/capabilities/native-messaging.json` разрешает три команды моста и
+`core:event:default` только для удалённых origin'ов `chrome-extension://*/*`,
+`msedge-extension://*/*`, `edge-extension://*/*`, `twitch.tv`, `youtube.com` и
+`youtu.be`. Команды приложения получили автогенерируемые разрешения через
+`tauri_build::AppManifest` в `src-tauri/build.rs`, поэтому локальный UI по-прежнему
+имеет доступ ко всем командам (`capabilities/default.json`).
 
 ---
 
@@ -125,7 +216,8 @@ lite-stream-browser/
     ├── build.rs
     ├── tauri.conf.json            # окно, identifier, withGlobalTauri
     ├── capabilities/
-    │   └── default.json           # core:default / core:event:default
+    │   ├── default.json           # core:default / core:event:default + все команды приложения
+    │   └── native-messaging.json  # удалённые origin'ы: только мост Native Messaging + события
     ├── icons/
     │   ├── icon.ico
     │   └── icon.png
@@ -135,6 +227,7 @@ lite-stream-browser/
         ├── state.rs               # AppState / Tab / снапшот для UI
         ├── browser.rs             # add_child, layout, hibernate, UA, установка расширений
         ├── commands.rs            # Tauri-команды, URL, Twitch-токен, расширения, cycle/visibility/metrics
+        ├── native_messaging.rs    # реестр хостов, длина+JSON поверх stdio, Tauri-события портов
         └── metrics.rs             # замер RAM/CPU/процессов по дереву приложения (Windows)
 ```
 
@@ -179,7 +272,8 @@ cargo tauri build
 > включите `bundle.active`, добавьте полный набор иконок и укажите цели сборки.
 
 Проверено с `tauri 2.12.7`, `tauri-plugin-global-shortcut 2.4.1`, Rust 1.100.0:
-`cargo check` завершается успешно.
+`cargo check` и `cargo build --release` завершаются успешно, бинарник —
+`target/release/lite-stream-browser.exe`.
 
 ---
 
@@ -367,12 +461,13 @@ WebView2:
 | Циклическое переключение вкладок | `cycle_tab` / `cycle_tab_sync` в `src-tauri/src/commands.rs`, регистрация в `src-tauri/src/lib.rs` |
 | Скрытие/показ дочернего WebView (для оверлеев) | `set_webview_visible` в `src-tauri/src/commands.rs`, вызов из `ui/index.html` |
 | Живая телеметрия RAM/CPU/Proc | `get_runtime_stats` в `src-tauri/src/commands.rs`, замер в `src-tauri/src/metrics.rs` |
-| Меню расширений / Stream UI Studio | `SUI_*`/`stream_ui_studio_script`, `collect_installed_extensions`, `toggle_extension_popup` в `src-tauri/src/browser.rs`; команды `toggle_ui_studio`, `list_installed_extensions`, `open_extension_popup`, `close_extension_popup` в `src-tauri/src/commands.rs`; меню `#extMenu`/`uiStudioBtn` в `ui/index.html`; ресурсы `src-tauri/resources/stream-ui-studio/*` |
+| Меню расширений / Stream UI Studio | `SUI_*`/`stream_ui_studio_script`, `collect_installed_extensions_cached`, `toggle_extension_popup` в `src-tauri/src/browser.rs`; команды `toggle_ui_studio`, `list_installed_extensions`, `open_extension_popup`, `close_extension_popup` в `src-tauri/src/commands.rs`; меню `#extMenu`/`uiStudioBtn` в `ui/index.html`; ресурсы `src-tauri/resources/stream-ui-studio/*` |
 | Аргументы WebView2, сетевой User-Agent и JS-нормализация Client Hints | `BROWSER_ARGS`, `apply_clean_user_agent`, `INITIALIZATION_SCRIPT` в `src-tauri/src/browser.rs` |
-| Расширения: сканирование, установка, дедупликация, список | `sync_extensions`, `add_extensions`, `collect_extensions` в `src-tauri/src/browser.rs`; команды `open_extensions_folder`, `list_extensions` в `src-tauri/src/commands.rs` |
+| Расширения: сканирование, установка, дедупликация, список | `sync_extensions`, `add_extensions`, `collect_extensions_cached` в `src-tauri/src/browser.rs`; команды `open_extensions_folder`, `list_extensions` в `src-tauri/src/commands.rs` |
 | Импорт Twitch-сессии, домен/флаги/срок cookie | `import_twitch_token` в `src-tauri/src/commands.rs`, `install_twitch_cookies`/`set_twitch_cookies` в `src-tauri/src/browser.rs` |
 | Папка профиля и папка расширений | `app_local_data_dir()/browser-profile`, `app_local_data_dir()/extensions` в `src-tauri/src/lib.rs` |
-| Права Tauri | `src-tauri/capabilities/default.json` |
+| Права Tauri | `src-tauri/capabilities/default.json`, `src-tauri/capabilities/native-messaging.json`, `src-tauri/build.rs` (автогенерация разрешений команд) |
+| Chrome Native Messaging | `src-tauri/src/native_messaging.rs` (реестр, процессы, кадры, события), `NATIVE_MESSAGING_SCRIPT` в `src-tauri/src/browser.rs` (полифилл `chrome.runtime` и postMessage-мост), команды `native_connect`/`native_post_message`/`native_disconnect` в `src-tauri/src/lib.rs` |
 | Размеры/заголовок окна | `src-tauri/tauri.conf.json` |
 
 ---
