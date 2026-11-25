@@ -1,6 +1,6 @@
 [package]
 name = "lite-stream-browser"
-version = "0.1.0"
+version = "0.2.0"
 description = "A tiny, memory-friendly Twitch / YouTube shell built with Tauri v2"
 authors = ["Lite Stream Browser"]
 edition = "2021"
