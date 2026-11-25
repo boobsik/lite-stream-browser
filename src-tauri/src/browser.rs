@@ -35,6 +35,38 @@ pub const PANEL_HEIGHT: f64 = 36.0;
 const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
                             --disable-blink-features=AutomationControlled";
 
+/// Navigation allow-list shared by tab WebViews and extension popups.
+///
+/// `on_navigation` aborts anything for which the handler returns `false`, so
+/// `chrome-extension://` (and the other local schemes) must be named
+/// explicitly. Otherwise extension pages silently never load and the UI looks
+/// frozen.
+fn is_allowed_navigation(url: &Url) -> bool {
+    matches!(
+        url.scheme(),
+        "http"
+            | "https"
+            | "chrome-extension"
+            | "edge"
+            | "about"
+            | "data"
+            | "blob"
+            | "file"
+    )
+}
+
+/// A `window.open` request (also from an extension page) becomes a regular
+/// tab. Creating a child WebView inside the navigation callback would
+/// deadlock WebView2, so the work is handed to a worker thread.
+fn open_new_window_as_tab(app: AppHandle, url: Url) {
+    std::thread::spawn(move || {
+        let shared = app.state::<SharedState>().inner().clone();
+        if let Err(error) = crate::commands::open_tab_core(&app, &shared, url.to_string()) {
+            eprintln!("[lite-stream] could not open popup as a tab: {error}");
+        }
+    });
+}
+
 /// Runs before any page script (document start) in every tab.
 ///
 /// The native WebView2 engine is kept as-is, so the Chromium version in the UA
@@ -139,6 +171,245 @@ const INITIALIZATION_SCRIPT: &str = r#"
 })();
 "#;
 
+/// `chrome.runtime.connectNative` / `sendNativeMessage` polyfill.
+///
+/// WebView2 can load unpacked Chrome extensions but does not expose native
+/// messaging, so Chatterino+ cannot reach its native host. The bridge calls the
+/// Rust commands and subscribes to `native-message:<port>` Tauri events. It is
+/// injected into every child WebView, including extension popup pages where
+/// `chrome.runtime` really exists, and exposes a `window.postMessage` bridge for
+/// extension content scripts running in an isolated world.
+const NATIVE_MESSAGING_SCRIPT: &str = r#"
+(() => {
+  "use strict";
+  if (window.__LSB_NATIVE_MESSAGING__) return;
+  window.__LSB_NATIVE_MESSAGING__ = true;
+
+  const internals = window.__TAURI_INTERNALS__;
+  if (!internals || typeof internals.invoke !== "function") return;
+
+  if (!window.chrome) {
+    Object.defineProperty(window, "chrome", { value: {}, configurable: true });
+  }
+  const chrome = window.chrome;
+  if (!chrome.runtime) {
+    Object.defineProperty(chrome, "runtime", { value: {}, configurable: true });
+  }
+  const runtime = chrome.runtime;
+
+  const ports = new Map();
+  const bridgePorts = new Map();
+  let sequence = 0;
+
+  function makeEvent(set) {
+    return {
+      addListener(fn) {
+        if (typeof fn === "function") set.add(fn);
+      },
+      removeListener(fn) {
+        set.delete(fn);
+      },
+      hasListener(fn) {
+        return set.has(fn);
+      },
+    };
+  }
+
+  function newPortId() {
+    sequence += 1;
+    const random = Math.random().toString(36).slice(2, 10);
+    return `nm_${Date.now().toString(36)}_${sequence.toString(36)}_${random}`;
+  }
+
+  function listenForPort(portId, port) {
+    const event = `native-message:${portId}`;
+    let callbackId;
+    callbackId = internals.transformCallback((data) => {
+      const payload = data && data.payload;
+      if (!payload || !ports.has(portId)) return;
+      if (payload.type === "message") {
+        for (const fn of Array.from(port.__messageListeners)) {
+          try { fn(payload.message, port); } catch (error) { console.error(error); }
+        }
+        const bridge = bridgePorts.get(portId);
+        if (bridge && bridge.requestId) {
+          window.postMessage({
+            __lsbNativeBridge: true,
+            type: "message",
+            requestId: bridge.requestId,
+            message: payload.message,
+          }, "*");
+        }
+      } else if (payload.type === "disconnected" || payload.type === "error") {
+        if (port.__disconnected) return;
+        port.__disconnected = true;
+        ports.delete(portId);
+        if (payload.type === "error") console.error("[lite-stream] " + payload.error);
+        for (const fn of Array.from(port.__disconnectListeners)) {
+          try { fn(port); } catch (error) { console.error(error); }
+        }
+        const bridge = bridgePorts.get(portId);
+        if (bridge) {
+          bridgePorts.delete(portId);
+          window.postMessage({
+            __lsbNativeBridge: true,
+            type: "disconnected",
+            requestId: bridge.requestId,
+          }, "*");
+        }
+      }
+    });
+    return internals.invoke("plugin:event|listen", {
+      event,
+      target: { kind: "Any" },
+      handler: callbackId,
+    });
+  }
+
+  function connectNative(hostName) {
+    const name = String(hostName || "");
+    if (!name) throw new Error("Native host name is required");
+    const portId = newPortId();
+
+    const port = {
+      name,
+      __portId: portId,
+      __messageListeners: new Set(),
+      __disconnectListeners: new Set(),
+      __disconnected: false,
+      __connecting: true,
+      __queue: [],
+      onMessage: null,
+      onDisconnect: null,
+      postMessage(message) {
+        if (port.__disconnected) {
+          throw new Error("Attempting to use a disconnected port object");
+        }
+        let payloadJson;
+        try {
+          payloadJson = JSON.stringify(message === undefined ? null : message);
+        } catch (error) {
+          throw new Error("Native messaging message is not JSON serializable: " + error);
+        }
+        if (port.__connecting) {
+          port.__queue.push(payloadJson);
+          return;
+        }
+        internals.invoke("native_post_message", { portId, payloadJson }).catch((error) => {
+          console.error("[lite-stream] native messaging post failed", error);
+        });
+      },
+      disconnect() {
+        if (port.__disconnected) return;
+        port.__disconnected = true;
+        ports.delete(portId);
+        bridgePorts.delete(portId);
+        internals.invoke("native_disconnect", { portId }).catch(() => {});
+        for (const fn of Array.from(port.__disconnectListeners)) {
+          try { fn(port); } catch (error) { console.error(error); }
+        }
+      },
+    };
+    port.onMessage = makeEvent(port.__messageListeners);
+    port.onDisconnect = makeEvent(port.__disconnectListeners);
+
+    function fail(error) {
+      if (!ports.has(portId)) return;
+      port.__disconnected = true;
+      port.__queue.length = 0;
+      ports.delete(portId);
+      bridgePorts.delete(portId);
+      console.error("[lite-stream] native host connect failed", error);
+      for (const fn of Array.from(port.__disconnectListeners)) {
+        try { fn(port); } catch (inner) { console.error(inner); }
+      }
+    }
+
+    ports.set(portId, port);
+    // Register the event listener first: a fast host may answer before the
+    // connect command itself resolves.
+    listenForPort(portId, port).then(() => {
+      if (!ports.has(portId)) return;
+      internals.invoke("native_connect", {
+        portId,
+        hostName: name,
+        origin: location && location.origin ? location.origin : undefined,
+      }).then(() => {
+        if (port.__disconnected) {
+          // disconnect() was called while the host was still starting.
+          internals.invoke("native_disconnect", { portId }).catch(() => {});
+          return;
+        }
+        port.__connecting = false;
+        const queued = port.__queue.splice(0);
+        for (const payloadJson of queued) {
+          internals.invoke("native_post_message", { portId, payloadJson }).catch((error) => {
+            console.error("[lite-stream] native messaging post failed", error);
+          });
+        }
+      }).catch(fail);
+    }).catch(fail);
+    return port;
+  }
+
+  function sendNativeMessage(hostName, message, callback) {
+    const port = connectNative(hostName);
+    let settled = false;
+    return new Promise((resolve) => {
+      function finish(response) {
+        if (settled) return;
+        settled = true;
+        port.disconnect();
+        if (typeof callback === "function") callback(response);
+        resolve(response);
+      }
+      port.onMessage.addListener(finish);
+      port.onDisconnect.addListener(() => finish(undefined));
+      port.postMessage(message);
+    });
+  }
+
+  // WebView2 exposes only part of chrome.runtime; always install our working
+  // bridge so Chatterino+ never ends up with a native stub that does nothing.
+  try {
+    Object.defineProperty(runtime, "connectNative", { value: connectNative, configurable: true });
+    Object.defineProperty(runtime, "sendNativeMessage", { value: sendNativeMessage, configurable: true });
+  } catch (error) {
+    console.error("[lite-stream] could not patch chrome.runtime", error);
+  }
+
+  // Extension content scripts live in an isolated world and cannot see the
+  // main-world `chrome.runtime` object. They can opt into this bridge with
+  // window.postMessage using the same API shape.
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.__lsbNativeBridge !== true || event.source !== window) return;
+    try {
+      if (data.type === "connect") {
+        const port = connectNative(data.hostName);
+        bridgePorts.set(port.__portId, { requestId: data.requestId });
+        window.postMessage({ __lsbNativeBridge: true, type: "connected", requestId: data.requestId }, "*");
+      } else if (data.type === "post") {
+        for (const [portId, bridge] of bridgePorts) {
+          if (bridge.requestId !== data.requestId) continue;
+          const port = ports.get(portId);
+          if (port) port.postMessage(data.message);
+        }
+      } else if (data.type === "disconnect") {
+        for (const [portId, bridge] of bridgePorts) {
+          if (bridge.requestId !== data.requestId) continue;
+          bridgePorts.delete(portId);
+          const port = ports.get(portId);
+          if (port) port.disconnect();
+        }
+      }
+    } catch (error) {
+      console.error("[lite-stream] native messaging bridge error", error);
+    }
+  });
+})();
+"#;
+
 static WEBVIEW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static SUI_SCRIPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static EXTENSION_POPUP_LABEL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
@@ -146,6 +417,7 @@ static EXTENSION_POPUP_LABEL: std::sync::Mutex<Option<String>> = std::sync::Mute
 pub fn close_extension_popup(app: &AppHandle) -> bool {
     let label = EXTENSION_POPUP_LABEL.lock().unwrap_or_else(|p| p.into_inner()).take();
     if let Some(label) = label {
+        crate::native_messaging::disconnect_webview(&label);
         if let Some(webview) = app.get_webview(&label) {
             let _ = webview.close();
         }
@@ -609,7 +881,10 @@ fn icon_data_url(dir: &Path, icon_rel: Option<&str>) -> Option<String> {
     Some(format!("data:{};base64,{}", mime, BASE64_STANDARD.encode(bytes)))
 }
 
-fn read_manifest(dir: &Path) -> Option<(String, String, Option<String>, Option<String>, Option<String>)> {
+/// name, version, popup path, options page path, icon path.
+type ExtensionManifestInfo = (String, String, Option<String>, Option<String>, Option<String>);
+
+fn read_manifest(dir: &Path) -> Option<ExtensionManifestInfo> {
     let raw = std::fs::read_to_string(dir.join("manifest.json")).ok()?;
     let manifest: serde_json::Value = serde_json::from_str(&raw).ok()?;
 
@@ -769,31 +1044,10 @@ pub fn collect_extensions_cached(
     collect_infos(extensions_dir, live)
 }
 
-/// Legacy: queries live extensions from webview. Prefer cached variants for UI responsiveness.
-pub fn collect_installed_extensions(
-    webview: Option<&tauri::Webview>,
-    extensions_dir: &Path,
-) -> Vec<InstalledExtensionInfo> {
-    let live = webview
-        .and_then(|webview| query_live_extensions(webview).ok())
-        .unwrap_or_default();
-    collect_installed_infos(extensions_dir, &live)
-}
-
-pub fn collect_extensions(
-    webview: Option<&tauri::Webview>,
-    extensions_dir: &Path,
-) -> Vec<ExtensionInfo> {
-    let live = webview
-        .and_then(|webview| query_live_extensions(webview).ok())
-        .unwrap_or_default();
-    collect_infos(extensions_dir, &live)
-}
-
 pub fn refresh_extension_cache(app: &AppHandle, shared: &SharedState) {
-    let (extensions_dir, label) = {
+    let label = {
         let guard = state::lock(shared);
-        (guard.extensions_directory.clone(), guard.active_webview_label())
+        guard.active_webview_label()
     };
     let Some(label) = label else { return; };
     let Some(webview) = app.get_webview(&label) else { return; };
@@ -1071,6 +1325,7 @@ pub fn toggle_extension_popup(
     {
         let mut guard = EXTENSION_POPUP_LABEL.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(label) = guard.take() {
+            crate::native_messaging::disconnect_webview(&label);
             if let Some(webview) = app.get_webview(&label) {
                 let _ = webview.close();
             }
@@ -1101,11 +1356,22 @@ pub fn toggle_extension_popup(
 
     let label = format!("ext-popup-{}", WEBVIEW_SEQUENCE.fetch_add(1, Ordering::Relaxed));
     let data_directory = state::lock(shared).data_directory.clone();
+    let popup_app = app.clone();
 
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
         .data_directory(data_directory)
         .browser_extensions_enabled(true)
         .additional_browser_args(BROWSER_ARGS)
+        // Extension pages are the primary consumers of chrome.runtime.connectNative.
+        .initialization_script(NATIVE_MESSAGING_SCRIPT)
+        // Without this handler WebView2 may refuse extension-to-extension
+        // navigations inside the popup. Deny is only for window.open requests;
+        // is_allowed_navigation governs in-place navigation.
+        .on_navigation(is_allowed_navigation)
+        .on_new_window(move |url, _features| {
+            open_new_window_as_tab(popup_app.clone(), url);
+            NewWindowResponse::Deny
+        })
         .focused(true)
         .auto_resize();
 
@@ -1208,9 +1474,17 @@ pub fn create_child(
     let title_app = app.clone();
     let popup_app = app.clone();
 
-    let init_script = format!("{}\n\n{}", INITIALIZATION_SCRIPT, sui_script());
+    let init_script = format!(
+        "{}\n\n{}\n\n{}",
+        INITIALIZATION_SCRIPT,
+        NATIVE_MESSAGING_SCRIPT,
+        sui_script()
+    );
 
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed_url))
+        // Explicitly permit extension pages (and browser-internal schemes) in
+        // the tab WebView; returning false here would cancel the navigation.
+        .on_navigation(is_allowed_navigation)
         // One shared, persistent profile for every tab -> cookies, logins,
         // subscriptions and recommendations survive hibernation and restarts.
         .data_directory(data_directory)
@@ -1231,16 +1505,9 @@ pub fn create_child(
             update_tab_title(&title_app, tab_id, title);
         })
         .on_new_window(move |url, _features| {
-            // target="_blank" links and OAuth popups become regular tabs so
-            // they also use our persistent profile instead of a bare window.
-            let app = popup_app.clone();
-            let url = url.to_string();
-            std::thread::spawn(move || {
-                let shared = app.state::<SharedState>().inner().clone();
-                if let Err(error) = crate::commands::open_tab_core(&app, &shared, url) {
-                    eprintln!("[lite-stream] could not open popup as a tab: {error}");
-                }
-            });
+            // target="_blank" links, OAuth popups and chrome-extension pages
+            // become regular tabs so they also use our persistent profile.
+            open_new_window_as_tab(popup_app.clone(), url);
             NewWindowResponse::Deny
         });
 
@@ -1281,6 +1548,8 @@ pub fn create_child(
 }
 
 pub fn close_webview(app: &AppHandle, label: &str) {
+    // A sleeping tab must not leave its native host process running.
+    crate::native_messaging::disconnect_webview(label);
     if let Some(webview) = app.get_webview(label) {
         if let Err(error) = webview.close() {
             eprintln!("[lite-stream] could not close WebView {label}: {error}");

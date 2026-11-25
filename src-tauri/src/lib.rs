@@ -1,6 +1,7 @@
 mod browser;
 mod commands;
 mod metrics;
+mod native_messaging;
 mod state;
 
 use state::{AppState, SharedState};
@@ -111,6 +112,10 @@ pub fn run() {
                             unregister_shortcuts(&handle);
                         }
                     }
+                    WindowEvent::Destroyed => {
+                        // Never leave a native host process behind on exit.
+                        native_messaging::disconnect_all();
+                    }
                     _ => {}
                 });
             }
@@ -140,6 +145,9 @@ pub fn run() {
             commands::open_extension_popup,
             commands::close_extension_popup,
             commands::set_overlay_active,
+            native_messaging::native_connect,
+            native_messaging::native_post_message,
+            native_messaging::native_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lite Stream Browser");

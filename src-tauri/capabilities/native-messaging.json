@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "native-messaging",
+  "description": "Lets extension pages and the supported streaming sites use the Chrome Native Messaging bridge. Only the three bridge commands and Tauri events are exposed, and only on the origins where Chatterino+ runs.",
+  "windows": ["main"],
+  "local": false,
+  "remote": {
+    "urls": [
+      "chrome-extension://*/*",
+      "msedge-extension://*/*",
+      "edge-extension://*/*",
+      "https://twitch.tv/*",
+      "https://*.twitch.tv/*",
+      "https://youtube.com/*",
+      "https://*.youtube.com/*",
+      "https://youtu.be/*"
+    ]
+  },
+  "permissions": [
+    "core:event:default",
+    "allow-native-connect",
+    "allow-native-post-message",
+    "allow-native-disconnect"
+  ]
+}

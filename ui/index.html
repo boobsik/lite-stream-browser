@@ -167,6 +167,8 @@
     .ext-row-name { display: block; font-size: 12px; font-weight: 550; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ext-row-meta { display: block; margin-top: 2px; font-size: 10px; color: var(--text-3); font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .ext-row .ghost-btn { height: 28px; padding: 0 10px; font-size: 10.5px; }
+    .ext-row-status { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: #5ED68A; opacity: 0.9; white-space: nowrap; }
+    .ext-row-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
     .ext-modal-foot {
       display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.015);
     }
@@ -659,8 +661,9 @@
       font-weight: 600;
       transition: transform 160ms var(--ease), opacity 160ms var(--ease);
     }
-    .ghost-btn:hover { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
-    .ghost-btn:active { transform: scale(0.97); }
+    .ghost-btn:hover:not(:disabled) { background: var(--raised-2); border-color: var(--line-strong); color: var(--text); }
+    .ghost-btn:disabled { opacity: 0.45; cursor: default; }
+    .ghost-btn:active:not(:disabled) { transform: scale(0.97); }
     .ghost-btn svg { width: 12px; height: 12px; }
     .ghost-btn.primary { background: rgba(255, 255, 255, 0.07); border-color: var(--line-strong); color: var(--text); }
 
@@ -1739,6 +1742,7 @@
       let settingsOpen = false;
       let extModalOpen = false;
       let hiddenWebview = false;
+      let overlayRequest = null;
       let extModalItems = [];
       let toastTimer = 0;
       let busyTimer = 0;
@@ -1776,8 +1780,13 @@
         return "other";
       }
 
+      // These schemes must never be rewritten into https:// or a search query.
+      const DIRECT_SCHEME = /^(?:https?:\/\/|chrome-extension:\/\/|edge:\/\/|about:)/i;
+      const SPECIAL_SCHEME = /^(?:chrome-extension:\/\/|edge:\/\/|about:)/i;
+
       function ensureScheme(value) {
-        return /^https?:\/\//i.test(value) ? value : "https://" + value;
+        const result = String(value || "").trim();
+        return DIRECT_SCHEME.test(result) ? result : "https://" + result;
       }
 
       function normalizeUrlKey(url) {
@@ -1799,6 +1808,9 @@
       function labelForUrl(url) {
         try {
           const parsed = new URL(url);
+          if (parsed.protocol === "chrome-extension:") {
+            return "Расширение · " + (parsed.hostname || "pages");
+          }
           const host = parsed.hostname.replace(/^www\./, "");
           if (host === "twitch.tv" || host.endsWith(".twitch.tv")) {
             const segment = parsed.pathname.split("/").filter(Boolean)[0];
@@ -1822,7 +1834,7 @@
         const value = String(raw || "").trim();
         if (!value) return { kind: "idle", label: "ожидание", url: null };
 
-        const hasScheme = /^https?:\/\//i.test(value);
+        const hasScheme = DIRECT_SCHEME.test(value);
         let host = "";
         try {
           host = new URL(hasScheme ? value : "https://" + value).hostname
@@ -1838,6 +1850,9 @@
         }
         if (host === "twitch.tv" || host.endsWith(".twitch.tv")) {
           return { kind: "tw", label: "Twitch", url };
+        }
+        if (SPECIAL_SCHEME.test(value)) {
+          return { kind: "link", label: "URL", url };
         }
         if (/^@[\w.-]+$/.test(value)) {
           return { kind: "yt", label: "YouTube · канал", url: "https://www.youtube.com/" + value };
@@ -1863,8 +1878,7 @@
       function favoriteUrl(input) {
         const value = String(input || "").trim();
         if (!value) return null;
-        const lower = value.toLowerCase();
-        if (lower.startsWith("http://") || lower.startsWith("https://")) return value;
+        if (DIRECT_SCHEME.test(value)) return value;
         if (/\s/.test(value)) return null;
         if (value.includes(".")) return "https://" + value;
         return null;
@@ -2531,24 +2545,43 @@
           row.innerHTML = `<div class="ext-row-icon" aria-hidden="true">${icon}</div><div class="ext-row-copy"><span class="ext-row-name"></span><span class="ext-row-meta"></span></div>`;
           row.querySelector(".ext-row-name").textContent = ext.name || "Расширение";
           row.querySelector(".ext-row-meta").textContent = meta;
+          const hasPopup = !!(ext.id && ext.popupPath);
+          const hasOptions = !!(ext.id && ext.optionsPath);
+          if (!hasPopup && !hasOptions) {
+            // Background-only extensions (proxy, auto-clicker, ...) have no
+            // page to show. Do not offer a dead "Открыть" button for them.
+            const status = document.createElement("span");
+            status.className = "ext-row-status";
+            status.textContent = "Работает в фоне";
+            status.title = "У расширения нет popup и страницы настроек";
+            status.setAttribute("role", "status");
+            status.setAttribute("aria-label", "Работает в фоне");
+            row.appendChild(status);
+            list.appendChild(row);
+            continue;
+          }
+
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "ghost-btn";
-          const hasPopup = !!(ext.popupPath && ext.id);
-          const hasOptions = !!ext.optionsPath;
-          btn.textContent = hasPopup ? "Открыть" : hasOptions ? "Настройки" : "Нет UI";
-          btn.disabled = !hasPopup && !hasOptions;
+          btn.textContent = hasPopup ? "Открыть" : "Настройки";
+          const actionLabel = hasPopup
+            ? "Открыть окно расширения " + (ext.name || ext.id)
+            : "Открыть настройки расширения " + (ext.name || ext.id);
+          btn.title = actionLabel;
+          btn.setAttribute("aria-label", actionLabel);
           btn.addEventListener("click", async () => {
+            // closeExtModal restores the child WebView and closes any previous
+            // popup before the extension page is created, so it must finish
+            // first. Without the restore the new WebView is covered.
             await closeExtModal();
             if (!invoke) return;
             try {
               setBusy(true);
               if (hasPopup) {
                 await invoke("open_extension_popup", { extensionId: ext.id, popupPath: ext.popupPath });
-              } else if (ext.optionsPath && ext.id) {
+              } else {
                 await openTab(`chrome-extension://${ext.id}/${ext.optionsPath}`);
-              } else if (ext.optionsPath) {
-                await openTab(ext.optionsPath);
               }
             } catch (error) { showToast(errorText(error)); }
             finally { setBusy(false); }
@@ -2586,7 +2619,8 @@
         const active = activeTab();
         if (active && !active.sleeping && invoke) {
           hiddenWebview = true;
-          invoke("set_overlay_active", { active: true }).catch(() => { hiddenWebview = false; });
+          overlayRequest = invoke("set_overlay_active", { active: true })
+            .catch(() => { hiddenWebview = false; });
         } else {
           hiddenWebview = false;
         }
@@ -2607,17 +2641,23 @@
         el.extOverlay.classList.remove("open");
         document.body.classList.remove("settings-open");
         el.uiStudioBtn.classList.remove("menu-open");
-        if (invoke) invoke("close_extension_popup").catch(() => {});
-
-        const restore = hiddenWebview;
         hiddenWebview = false;
         setTimeout(() => { el.extOverlay.hidden = true; }, 180);
-        if (restore && invoke && !settingsOpen) {
-          try {
-            const next = await invoke("set_overlay_active", { active: false });
-            if (next) applyState(next);
-          } catch (_) {}
+        if (!invoke) return;
+
+        // Order matters: let the hide request finish, close an older popup,
+        // then always restore the tab WebView before a new one is created.
+        // Otherwise the extension WebView ends up behind the dark overlay.
+        const pendingOverlay = overlayRequest;
+        overlayRequest = null;
+        if (pendingOverlay) {
+          try { await pendingOverlay; } catch (_) {}
         }
+        try { await invoke("close_extension_popup"); } catch (_) {}
+        try {
+          const next = await invoke("set_overlay_active", { active: false });
+          if (next) applyState(next);
+        } catch (_) {}
       }
 
       async function openSettings(focusToken) {

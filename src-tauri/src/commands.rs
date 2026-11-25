@@ -10,29 +10,43 @@ fn shared_state(app: &AppHandle) -> SharedState {
 // URL helpers
 // ---------------------------------------------------------------------------
 
-/// Accepts full URLs, bare domains, localhost and plain search queries.
+/// Schemes that must be passed through untouched: prepending `https://` or
+/// treating them as a search query breaks extension and browser-internal pages.
+fn has_explicit_scheme(input: &str) -> bool {
+    let lower = input.to_ascii_lowercase();
+    lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("chrome-extension://")
+        || lower.starts_with("edge://")
+        || lower.starts_with("about:")
+}
+
+/// Accepts full URLs, extension/browser-internal schemes, bare domains,
+/// localhost and plain search queries.
 fn normalize_url(input: &str) -> Result<Url, String> {
     let input = input.trim();
     if input.is_empty() {
         return Err("Введите URL или поисковый запрос".into());
     }
 
-    let lower = input.to_ascii_lowercase();
-    let candidate = if lower.starts_with("http://") || lower.starts_with("https://") {
+    let candidate = if has_explicit_scheme(input) {
         input.to_string()
-    } else if lower.starts_with("localhost") || lower.starts_with("127.0.0.1") {
-        format!("http://{input}")
-    } else if input.contains(char::is_whitespace) || !input.contains('.') {
-        let encoded: String = url::form_urlencoded::byte_serialize(input.as_bytes()).collect();
-        format!("https://duckduckgo.com/?q={encoded}")
     } else {
-        format!("https://{input}")
+        let lower = input.to_ascii_lowercase();
+        if lower.starts_with("localhost") || lower.starts_with("127.0.0.1") {
+            format!("http://{input}")
+        } else if input.contains(char::is_whitespace) || !input.contains('.') {
+            let encoded: String = url::form_urlencoded::byte_serialize(input.as_bytes()).collect();
+            format!("https://duckduckgo.com/?q={encoded}")
+        } else {
+            format!("https://{input}")
+        }
     };
 
     let parsed = Url::parse(&candidate).map_err(|error| format!("Некорректный URL: {error}"))?;
     match parsed.scheme() {
-        "http" | "https" => Ok(parsed),
-        _ => Err("Поддерживаются только http(s) URL".into()),
+        "http" | "https" | "chrome-extension" | "edge" | "about" => Ok(parsed),
+        _ => Err("Поддерживаются только http(s), chrome-extension://, edge:// и about: URL".into()),
     }
 }
 
@@ -40,6 +54,9 @@ fn title_from_url(raw: &str) -> String {
     let Ok(url) = Url::parse(raw) else {
         return raw.to_string();
     };
+    if url.scheme() == "chrome-extension" {
+        return "Расширение".to_string();
+    }
     let host = url.host_str().unwrap_or("").trim_start_matches("www.");
     match host {
         "youtube.com" | "m.youtube.com" | "music.youtube.com" => "YouTube".to_string(),
@@ -589,15 +606,18 @@ pub fn list_installed_extensions(app: AppHandle, refresh: Option<bool>) -> Resul
 }
 
 /// Opens an extension popup in a compact child webview, or closes it if open.
+///
+/// Must stay `async`: `add_child` has to run off the main thread, otherwise
+/// WebView2 deadlocks while the popup is being created.
 #[tauri::command]
-pub fn open_extension_popup(app: AppHandle, extension_id: String, popup_path: String) -> Result<bool, String> {
+pub async fn open_extension_popup(app: AppHandle, extension_id: String, popup_path: String) -> Result<bool, String> {
     let shared = shared_state(&app);
     browser::toggle_extension_popup(&app, &shared, &extension_id, &popup_path)
 }
 
 /// Closes the extension popup webview if it is open.
 #[tauri::command]
-pub fn close_extension_popup(app: AppHandle) -> bool {
+pub async fn close_extension_popup(app: AppHandle) -> bool {
     browser::close_extension_popup(&app)
 }
 
