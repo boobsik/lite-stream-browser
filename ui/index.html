@@ -329,9 +329,13 @@
       .tab:first-child { border-left: 0; }
       .tab:hover { background: var(--panel-raised); color: var(--text); }
       .tab.active { background: var(--bg); color: var(--text); }
-      .tab.sleeping { opacity: 0.55; }
+      .tab.sleeping { color: var(--dim); }
+      .tab.sleeping:hover { color: var(--text); }
 
       .site-dot { flex: 0 0 auto; width: 6px; height: 6px; background: var(--dim); }
+      .site-dot.yt { background: var(--accent-a); }
+      .site-dot.tw { background: var(--accent-b); }
+      .site-dot.other { background: var(--dim); }
       .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .sleep-mark {
         flex: 0 0 auto;
@@ -792,7 +796,7 @@
       .status-keys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
       .key-hint { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 
-      .sleeping { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+      .sleeping-view { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
       .sleep-card {
         width: min(520px, 100%);
         padding: 24px;
@@ -1548,7 +1552,7 @@
       </footer>
     </section>
 
-    <section class="sleeping" id="sleepingView" hidden>
+    <section class="sleeping-view" id="sleepingView" hidden>
       <div class="sleep-card">
         <div class="sleep-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
