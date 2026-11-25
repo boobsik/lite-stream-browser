@@ -15,22 +15,28 @@
 - Не подключать React/Vue/Svelte, Tailwind CDN, анимационные библиотеки (GSAP, Framer
   Motion, Lottie) и иконочные шрифты. Иконки — только inline SVG.
 
-## 2. Эстетика нативного десктоп-лаунчера (Linear / Raycast / Arc)
+## 2. Эстетика acid dark
 
-- Базовый фон: `#0B0C0E`.
-- Поверхности и карточки: `#111215`.
-- Приподнятые элементы и hover: `#181A1F` / `#1F2228`.
-- Границы: `1px solid rgba(255, 255, 255, 0.08)`, на hover/focus —
-  `1px solid rgba(255, 255, 255, 0.16)`. Никаких толстых рамок и градиентных бордеров.
-- Акценты строго функциональные:
-  - YouTube — `#FF0033`; Twitch — `#9146FF`;
-  - используются только как маркер платформы/активной вкладки/иконки;
-  - весь остальной UI монохромный.
-- Функциональные статусы (успех/сон/ошибка) — приглушённые `#5ED68A`, `#E0B25C`,
-  `#FF6B6B` и только в виде точек, чипов и тонких линий.
-- Типографика: системный UI-шрифт без засечек, базовый размер 13 px.
-  Моноширинный шрифт — только для метрик RAM/CPU, таймеров, путей, токенов и
-  горячих клавиш. Для чисел обязательно `font-variant-numeric: tabular-nums`.
+- Все цвета задаются только CSS-переменными в `:root` раздела `ui/index.html`;
+  хардкод hex-кодов в разметке и компонентах запрещён.
+- Базовые значения: `--bg #0a0a0c`, `--panel #121216`, `--line #26262d`,
+  `--text #e9e9ee`, `--dim #7c7c88`, `--accent-a #c6ff00`, `--accent-b #ff2bd6`,
+  `--on-accent #0a0a0c`.
+- Пресеты переключаются классом на `<html>` и хранятся в `localStorage`:
+  `lime-magenta`, `lime-cyan`, `orange-lime`.
+- Границы: `1px solid var(--line)`; на hover/focus — `var(--line-strong)`.
+  Никаких толстых рамок, скруглений и градиентных бордеров.
+- Accent A (`--accent-a`): активное состояние, фокус, главная кнопка, логотип.
+  Accent B (`--accent-b`): метка `zZ`, счётчики, бейджи расширений.
+  Не больше двух акцентов на экране.
+- Точки-маркеры платформ во вкладках и доке: YouTube — `--accent-a`,
+  Twitch — `--accent-b`, остальные — `--dim`. Маркер — квадрат 6×6 без скруглений.
+  Неактивная вкладка: текст `--dim`, hover — `--text`; спящая — читаемая,
+  с меткой `zZ` цветом `--accent-b`, без прозрачности ниже 0.6.
+- Status-индикаторы — точки, чипы и тонкие линии в палитре пресетов.
+- Шрифты только локальные в `ui/fonts/`: Unbounded для заголовков,
+  JetBrains Mono для интерфейса и чисел. Fallback — Segoe UI / Consolas.
+  Не подключать Google Fonts. Для чисел — `font-variant-numeric: tabular-nums`.
 - Плотность: сетка 4/8 px, компактные отступы, без «воздушных» пустот.
 
 ## 3. Zero-Bloat и производительность (Tauri v2 / WebView2)
@@ -52,9 +58,10 @@
 - Высота панели — `36 px`: `PANEL_HEIGHT` в `src-tauri/src/browser.rs` и `--bar`
   в `ui/index.html` обязаны совпадать.
 - Все существующие Tauri-команды сохраняются:
-  `get_state`, `open_tab`, `switch_tab`, `close_tab`, `navigate`, `go_back`,
-  `reload`, `hibernate`, `wake`, `import_twitch_token`, `toggle_compact`,
-  `toggle_always_on_top`, `open_extensions_folder`, `list_extensions`.
+  `get_state`, `open_tab`, `switch_tab`, `close_tab`, `show_home`, `navigate`,
+  `go_back`, `reload`, `hibernate`, `wake`, `import_twitch_token`,
+  `toggle_compact`, `toggle_always_on_top`, `open_extensions_folder`,
+  `list_extensions`.
 - Дочерний WebView рисуется поверх основного. Любой HTML-диалог ниже панели
   должен сначала скрыть активный WebView командой `set_webview_visible`.
 - `invoke(...)` вызывается только из UI; ошибки показываются тостом, а не
