@@ -329,6 +329,32 @@ pub async fn hibernate(app: AppHandle) -> Result<UiState, String> {
     Ok(browser::snapshot_and_emit(&app, &shared))
 }
 
+/// Shows the start page. The active tab stays in the tab strip and goes to
+/// sleep under the same rules as any other background tab.
+#[tauri::command]
+pub async fn show_home(app: AppHandle) -> Result<UiState, String> {
+    let shared = shared_state(&app);
+
+    let label = {
+        let mut guard = state::lock(&shared);
+        let Some(id) = guard.active else {
+            drop(guard);
+            return Ok(browser::snapshot_and_emit(&app, &shared));
+        };
+        guard.active = None;
+        guard.tab_mut(id).and_then(|tab| {
+            tab.sleeping = true;
+            tab.webview_label.take()
+        })
+    };
+
+    if let Some(label) = label {
+        browser::close_webview(&app, &label);
+    }
+
+    Ok(browser::snapshot_and_emit(&app, &shared))
+}
+
 /// Recreates the WebView of the active (sleeping) tab from its saved URL.
 #[tauri::command]
 pub async fn wake(app: AppHandle) -> Result<UiState, String> {

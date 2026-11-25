@@ -132,6 +132,7 @@ pub fn run() {
             commands::reload,
             commands::hibernate,
             commands::wake,
+            commands::show_home,
             commands::cycle_tab,
             commands::import_twitch_token,
             commands::toggle_compact,

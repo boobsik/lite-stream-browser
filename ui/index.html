@@ -177,8 +177,11 @@
         flex: 0 0 auto;
         display: grid;
         place-items: center;
+        padding: 0;
+        border: 0;
         background: var(--accent-a);
         color: var(--on-accent);
+        cursor: pointer;
       }
       .toolbar-mark svg { width: 15px; height: 15px; display: block; }
 
@@ -1276,15 +1279,18 @@
 </head>
 <body>
   <header id="toolbar">
-    <div class="toolbar-mark" aria-hidden="true">
+    <button class="toolbar-mark" id="logoHome" title="Главная (Alt+Home)" aria-label="Главная">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square">
         <path d="M4 4h7v7H4z" fill="currentColor" stroke="none" />
         <path d="M13 4h7v7h-7z" />
         <path d="M4 13h7v7H4z" />
         <path d="M13 13h7v7h-7z" fill="currentColor" stroke="none" />
       </svg>
-    </div>
+    </button>
     <div class="tb-cluster" aria-label="Навигация">
+      <button class="icon-btn" id="homeBtn" title="Главная (Alt+Home)" aria-label="Главная">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-6h4v6"/></svg>
+      </button>
       <button class="icon-btn" id="backBtn" title="Назад (Alt+←)" aria-label="Назад">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
@@ -1752,6 +1758,8 @@
       const listen = tauri?.event?.listen;
 
       const el = {
+        home: document.getElementById("homeBtn"),
+        logoHome: document.getElementById("logoHome"),
         back: document.getElementById("backBtn"),
         reload: document.getElementById("reloadBtn"),
         addressForm: document.getElementById("addressForm"),
@@ -2857,6 +2865,8 @@
         }
       }
       function bindEvents() {
+        el.home.addEventListener("click", () => run("show_home"));
+        el.logoHome.addEventListener("click", () => run("show_home"));
         el.back.addEventListener("click", () => run("go_back"));
         el.reload.addEventListener("click", () => run("reload"));
         el.uiStudioBtn.addEventListener("click", async (e) => {
@@ -3121,6 +3131,11 @@
           if (event.altKey && event.key === "ArrowLeft") {
             event.preventDefault();
             run("go_back");
+            return;
+          }
+          if (event.altKey && event.key === "Home") {
+            event.preventDefault();
+            run("show_home");
             return;
           }
           if ((event.ctrlKey && key === "r") || event.key === "F5") {
