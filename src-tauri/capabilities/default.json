@@ -10,6 +10,7 @@
     "allow-open-tab",
     "allow-switch-tab",
     "allow-close-tab",
+    "allow-show-home",
     "allow-navigate",
     "allow-go-back",
     "allow-reload",

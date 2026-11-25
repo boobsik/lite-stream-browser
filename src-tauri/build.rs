@@ -9,6 +9,7 @@ fn main() {
             "open_tab",
             "switch_tab",
             "close_tab",
+            "show_home",
             "navigate",
             "go_back",
             "reload",
